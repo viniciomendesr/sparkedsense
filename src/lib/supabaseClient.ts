@@ -1,6 +1,3 @@
-import { createClient } from "@supabase/supabase-js";
-
-const supabaseUrl = process.env.SUPABASE_URL!;
-const supabaseKey = process.env.SUPABASE_ANON_KEY!;
-
-export const supabase = createClient(supabaseUrl, supabaseKey);
+// Client unificado - usa o projeto djzexivvddzzduetmkel
+// Re-exporta do client centralizado em utils/supabase/client
+export { supabase, createClient } from '../utils/supabase/client';
