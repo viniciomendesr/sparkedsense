@@ -21,7 +21,7 @@ const char* supabaseAnonKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJz
 // API Endpoints
 const char* registerDeviceEndpoint = "https://sparked-three.vercel.app/api/register-device";
 const char* getClaimTokenEndpoint = "https://sparked-three.vercel.app/api/get-claim-token";
-const char* readingsEndpoint = "https://djzexivvddzzduetmkel.supabase.co/functions/v1/make-server-4a89e1c9/readings";
+const char* readingsEndpoint = "https://djzexivvddzzduetmkel.supabase.co/functions/v1/server/readings";
 
 // --- EEPROM Configuration ---
 #define EEPROM_SIZE 128

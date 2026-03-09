@@ -118,7 +118,7 @@ const getUserFromToken = async (request: Request) => {
 };
 
 // Health check endpoint
-app.get("/make-server-4a89e1c9/health", (c) => {
+app.get("/server/health", (c) => {
   return c.json({ status: "ok" });
 });
 
@@ -126,7 +126,7 @@ app.get("/make-server-4a89e1c9/health", (c) => {
 // Authentication Routes
 // ======================
 
-app.post("/make-server-4a89e1c9/auth/signup", async (c) => {
+app.post("/server/auth/signup", async (c) => {
   try {
     const { email, password, name } = await c.req.json();
     
@@ -158,7 +158,7 @@ app.post("/make-server-4a89e1c9/auth/signup", async (c) => {
   }
 });
 
-app.post("/make-server-4a89e1c9/auth/signin", async (c) => {
+app.post("/server/auth/signin", async (c) => {
   try {
     const { email, password } = await c.req.json();
     
@@ -187,7 +187,7 @@ app.post("/make-server-4a89e1c9/auth/signin", async (c) => {
   }
 });
 
-app.post("/make-server-4a89e1c9/auth/signout", async (c) => {
+app.post("/server/auth/signout", async (c) => {
   try {
     const user = await getUserFromToken(c.req.raw);
     if (!user) {
@@ -208,7 +208,7 @@ app.post("/make-server-4a89e1c9/auth/signout", async (c) => {
   }
 });
 
-app.get("/make-server-4a89e1c9/auth/session", async (c) => {
+app.get("/server/auth/session", async (c) => {
   try {
     const user = await getUserFromToken(c.req.raw);
     if (!user) {
@@ -226,7 +226,7 @@ app.get("/make-server-4a89e1c9/auth/session", async (c) => {
 // ======================
 
 // Generate claim token
-app.post("/make-server-4a89e1c9/sensors/generate-claim-token", async (c) => {
+app.post("/server/sensors/generate-claim-token", async (c) => {
   try {
     const user = await getUserFromToken(c.req.raw);
     if (!user) {
@@ -246,7 +246,7 @@ app.post("/make-server-4a89e1c9/sensors/generate-claim-token", async (c) => {
 });
 
 // Retrieve claim token (mocked for now)
-app.post("/make-server-4a89e1c9/sensors/retrieve-claim-token", async (c) => {
+app.post("/server/sensors/retrieve-claim-token", async (c) => {
   try {
     const user = await getUserFromToken(c.req.raw);
     if (!user) {
@@ -303,7 +303,7 @@ app.post("/make-server-4a89e1c9/sensors/retrieve-claim-token", async (c) => {
   }
 });
 
-app.get("/make-server-4a89e1c9/sensors", async (c) => {
+app.get("/server/sensors", async (c) => {
   try {
     const user = await getUserFromToken(c.req.raw);
     if (!user) {
@@ -318,7 +318,7 @@ app.get("/make-server-4a89e1c9/sensors", async (c) => {
   }
 });
 
-app.get("/make-server-4a89e1c9/sensors/:id", async (c) => {
+app.get("/server/sensors/:id", async (c) => {
   try {
     const user = await getUserFromToken(c.req.raw);
     if (!user) {
@@ -357,7 +357,7 @@ app.get("/make-server-4a89e1c9/sensors/:id", async (c) => {
 });
 
 // Get hourly Merkle root for a sensor
-app.get("/make-server-4a89e1c9/sensors/:id/hourly-merkle", async (c) => {
+app.get("/server/sensors/:id/hourly-merkle", async (c) => {
   try {
     const user = await getUserFromToken(c.req.raw);
     if (!user) {
@@ -381,7 +381,7 @@ app.get("/make-server-4a89e1c9/sensors/:id/hourly-merkle", async (c) => {
   }
 });
 
-app.post("/make-server-4a89e1c9/sensors", async (c) => {
+app.post("/server/sensors", async (c) => {
   try {
     const user = await getUserFromToken(c.req.raw);
     if (!user) {
@@ -427,7 +427,7 @@ app.post("/make-server-4a89e1c9/sensors", async (c) => {
   }
 });
 
-app.put("/make-server-4a89e1c9/sensors/:id", async (c) => {
+app.put("/server/sensors/:id", async (c) => {
   try {
     const user = await getUserFromToken(c.req.raw);
     if (!user) {
@@ -456,7 +456,7 @@ app.put("/make-server-4a89e1c9/sensors/:id", async (c) => {
   }
 });
 
-app.delete("/make-server-4a89e1c9/sensors/:id", async (c) => {
+app.delete("/server/sensors/:id", async (c) => {
   try {
     const user = await getUserFromToken(c.req.raw);
     if (!user) {
@@ -506,7 +506,7 @@ app.delete("/make-server-4a89e1c9/sensors/:id", async (c) => {
 // Reading Routes
 // ======================
 
-app.get("/make-server-4a89e1c9/readings/:sensorId", async (c) => {
+app.get("/server/readings/:sensorId", async (c) => {
   try {
     const user = await getUserFromToken(c.req.raw);
     if (!user) {
@@ -528,7 +528,7 @@ app.get("/make-server-4a89e1c9/readings/:sensorId", async (c) => {
   }
 });
 
-app.get("/make-server-4a89e1c9/readings/:sensorId/historical", async (c) => {
+app.get("/server/readings/:sensorId/historical", async (c) => {
   try {
     const user = await getUserFromToken(c.req.raw);
     if (!user) {
@@ -552,7 +552,7 @@ app.get("/make-server-4a89e1c9/readings/:sensorId/historical", async (c) => {
   }
 });
 
-app.post("/make-server-4a89e1c9/readings", async (c) => {
+app.post("/server/readings", async (c) => {
   try {
     const user = await getUserFromToken(c.req.raw);
     if (!user) {
@@ -602,7 +602,7 @@ app.post("/make-server-4a89e1c9/readings", async (c) => {
 // Dataset Routes
 // ======================
 
-app.get("/make-server-4a89e1c9/datasets/:sensorId", async (c) => {
+app.get("/server/datasets/:sensorId", async (c) => {
   try {
     const user = await getUserFromToken(c.req.raw);
     if (!user) {
@@ -619,7 +619,7 @@ app.get("/make-server-4a89e1c9/datasets/:sensorId", async (c) => {
   }
 });
 
-app.get("/make-server-4a89e1c9/datasets/detail/:id", async (c) => {
+app.get("/server/datasets/detail/:id", async (c) => {
   try {
     const user = await getUserFromToken(c.req.raw);
     if (!user) {
@@ -662,7 +662,7 @@ app.get("/make-server-4a89e1c9/datasets/detail/:id", async (c) => {
   }
 });
 
-app.post("/make-server-4a89e1c9/datasets", async (c) => {
+app.post("/server/datasets", async (c) => {
   try {
     const user = await getUserFromToken(c.req.raw);
     if (!user) {
@@ -702,7 +702,7 @@ app.post("/make-server-4a89e1c9/datasets", async (c) => {
   }
 });
 
-app.put("/make-server-4a89e1c9/datasets/:id", async (c) => {
+app.put("/server/datasets/:id", async (c) => {
   try {
     const user = await getUserFromToken(c.req.raw);
     if (!user) {
@@ -729,7 +729,7 @@ app.put("/make-server-4a89e1c9/datasets/:id", async (c) => {
   }
 });
 
-app.post("/make-server-4a89e1c9/datasets/:id/anchor", async (c) => {
+app.post("/server/datasets/:id/anchor", async (c) => {
   try {
     const user = await getUserFromToken(c.req.raw);
     if (!user) {
@@ -777,7 +777,7 @@ app.post("/make-server-4a89e1c9/datasets/:id/anchor", async (c) => {
 });
 
 // Increment dataset access count
-app.post("/make-server-4a89e1c9/datasets/:id/access", async (c) => {
+app.post("/server/datasets/:id/access", async (c) => {
   try {
     const user = await getUserFromToken(c.req.raw);
     if (!user) {
@@ -803,7 +803,7 @@ app.post("/make-server-4a89e1c9/datasets/:id/access", async (c) => {
 });
 
 // Delete dataset
-app.delete("/make-server-4a89e1c9/datasets/:id", async (c) => {
+app.delete("/server/datasets/:id", async (c) => {
   try {
     const user = await getUserFromToken(c.req.raw);
     if (!user) {
@@ -842,7 +842,7 @@ app.delete("/make-server-4a89e1c9/datasets/:id", async (c) => {
 // ======================
 
 // Verify single hash
-app.post("/make-server-4a89e1c9/verify/hash", async (c) => {
+app.post("/server/verify/hash", async (c) => {
   try {
     const user = await getUserFromToken(c.req.raw);
     if (!user) {
@@ -876,7 +876,7 @@ app.post("/make-server-4a89e1c9/verify/hash", async (c) => {
 });
 
 // Verify hourly Merkle root
-app.post("/make-server-4a89e1c9/verify/merkle", async (c) => {
+app.post("/server/verify/merkle", async (c) => {
   try {
     const user = await getUserFromToken(c.req.raw);
     if (!user) {
@@ -915,7 +915,7 @@ app.post("/make-server-4a89e1c9/verify/merkle", async (c) => {
 // Stats Route
 // ======================
 
-app.get("/make-server-4a89e1c9/stats", async (c) => {
+app.get("/server/stats", async (c) => {
   try {
     const user = await getUserFromToken(c.req.raw);
     if (!user) {
@@ -952,7 +952,7 @@ app.get("/make-server-4a89e1c9/stats", async (c) => {
 // ======================
 
 // Get all public sensors
-app.get("/make-server-4a89e1c9/public/sensors", async (c) => {
+app.get("/server/public/sensors", async (c) => {
   try {
     const allSensors = await kv.getByPrefix('sensor:');
     console.log(`Found ${allSensors.length} total sensors in database`);
@@ -969,7 +969,7 @@ app.get("/make-server-4a89e1c9/public/sensors", async (c) => {
 });
 
 // Get top 3 featured public sensors with metrics
-app.get("/make-server-4a89e1c9/public/sensors/featured", async (c) => {
+app.get("/server/public/sensors/featured", async (c) => {
   try {
     const allSensors = await kv.getByPrefix('sensor:');
     console.log(`Processing ${allSensors.length} sensors for featured list`);
@@ -1033,7 +1033,7 @@ app.get("/make-server-4a89e1c9/public/sensors/featured", async (c) => {
 });
 
 // Get a specific public sensor
-app.get("/make-server-4a89e1c9/public/sensors/:id", async (c) => {
+app.get("/server/public/sensors/:id", async (c) => {
   try {
     const sensorId = c.req.param('id');
     const allSensors = await kv.getByPrefix('sensor:');
@@ -1056,7 +1056,7 @@ app.get("/make-server-4a89e1c9/public/sensors/:id", async (c) => {
 });
 
 // Get public datasets for a sensor
-app.get("/make-server-4a89e1c9/public/datasets/:sensorId", async (c) => {
+app.get("/server/public/datasets/:sensorId", async (c) => {
   try {
     const sensorId = c.req.param('sensorId');
     
@@ -1083,7 +1083,7 @@ app.get("/make-server-4a89e1c9/public/datasets/:sensorId", async (c) => {
 });
 
 // Get public readings for a sensor
-app.get("/make-server-4a89e1c9/public/readings/:sensorId", async (c) => {
+app.get("/server/public/readings/:sensorId", async (c) => {
   try {
     const sensorId = c.req.param('sensorId');
     const limit = parseInt(c.req.query('limit') || '100');
@@ -1113,7 +1113,7 @@ app.get("/make-server-4a89e1c9/public/readings/:sensorId", async (c) => {
 });
 
 // Get public hourly Merkle root for a sensor
-app.get("/make-server-4a89e1c9/public/sensors/:sensorId/hourly-merkle", async (c) => {
+app.get("/server/public/sensors/:sensorId/hourly-merkle", async (c) => {
   try {
     const sensorId = c.req.param('sensorId');
     
@@ -1151,7 +1151,7 @@ app.get("/make-server-4a89e1c9/public/sensors/:sensorId/hourly-merkle", async (c
 // ======================
 
 // Generate mock readings for all mock sensors
-app.post("/make-server-4a89e1c9/internal/generate-mock-data", async (c) => {
+app.post("/server/internal/generate-mock-data", async (c) => {
   try {
     const allSensors = await kv.getByPrefix('sensor:');
     const mockSensors = allSensors.filter((s: any) => s.mode === 'mock');

@@ -1,7 +1,7 @@
 import { projectId, publicAnonKey } from "../utils/supabase/info";
 import { Sensor, Reading, Dataset } from "./types";
 
-const API_BASE = `https://${projectId}.supabase.co/functions/v1/make-server-4a89e1c9`;
+const API_BASE = `https://${projectId}.supabase.co/functions/v1/server`;
 
 // Helper function to get auth headers
 export const getAuthHeaders = (accessToken?: string) => {
