@@ -1,6 +1,6 @@
 # ADR-003: secp256k1 signature verification without BIP-0062 normalization
 
-**Date:** 2026-03-10
+**Date:** 2026-03-10 16:51
 **Status:** Accepted
 
 ## Context

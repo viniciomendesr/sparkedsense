@@ -1,6 +1,6 @@
 # ADR-001: Stack and infrastructure choices
 
-**Date:** 2025-10-30
+**Date:** 2025-10-30 (documented 2026-03-10 16:51)
 **Status:** Accepted
 
 ## Context

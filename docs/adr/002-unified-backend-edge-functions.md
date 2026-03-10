@@ -1,6 +1,6 @@
 # ADR-002: Unified backend in Supabase Edge Functions
 
-**Date:** 2026-03-09
+**Date:** 2026-03-09 (documented 2026-03-10 16:51)
 **Status:** Accepted
 
 ## Context

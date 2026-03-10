@@ -1,6 +1,6 @@
 # ADR-004: Dual-layer storage — PostgreSQL + KV store
 
-**Date:** 2026-03-10
+**Date:** 2026-03-10 16:52
 **Status:** Accepted
 
 ## Context

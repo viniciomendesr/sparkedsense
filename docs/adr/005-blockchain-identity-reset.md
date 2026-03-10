@@ -1,6 +1,6 @@
 # ADR-005: Blockchain identity reset and wallet ownership
 
-**Date:** 2026-03-10
+**Date:** 2026-03-10 16:52
 **Status:** Accepted
 
 ## Context

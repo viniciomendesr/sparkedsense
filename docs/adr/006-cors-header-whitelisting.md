@@ -1,6 +1,6 @@
 # ADR-006: CORS header whitelisting strategy
 
-**Date:** 2026-03-10
+**Date:** 2026-03-10 16:52
 **Status:** Accepted
 
 ## Context
