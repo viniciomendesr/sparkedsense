@@ -130,8 +130,36 @@ Format inspired by [Keep a Changelog](https://keepachangelog.com/).
 
 ---
 
+## Phase 7 — Documentation restructure and blockchain planning (10 Mar 2026)
+
+**Contributor:** Vinicio Mendes (with AI assistance — Claude)
+
+### Changed
+- Project documentation restructured into `docs/` directory: `timeline.md` (Keep a Changelog format) and `docs/adr/` (Nygard ADR format) with index table
+- Legacy Next.js routes (`app/`) moved to `_reference/` with migration status README — these were dead code (project uses Vite, not Next.js)
+- Root `TIMELINE.md` replaced by `docs/timeline.md`
+- Timestamps (HH:MM) added to all ADR decision dates and index
+
+### Removed
+- Dead frontend code: `src/lib/websocket.ts` (61 lines, never used), `src/lib/supabaseClient.ts` (3 lines, duplicate of Edge Function client)
+- Dead backend stubs from `supabase/functions/server/lib/`: `deviceRegistry.ts` (204 lines), `redis.ts` (148 lines), `solanaService.ts` (168 lines), `supabaseClient.ts` (28 lines) — all unused legacy stubs with incompatible interfaces
+
+### Added
+- ADR-007: Fix Merkle tree and define on-chain schema before blockchain integration — establishes priority order: fix Merkle tree → define NFT metadata schema → define anchoring format → implement Solana integration. Defers MQTT migration and send interval reduction
+- ADR-008: Solana devnet over testnet — standardizes on devnet for development and academic validation, skipping testnet entirely (devnet → mainnet path)
+
+> Blockchain planning documented in [ADR-007](adr/007-merkle-tree-before-blockchain.md) and [ADR-008](adr/008-solana-devnet-over-testnet.md)
+
+---
+
 ## Current status
 
-**Implemented:** End-to-end DePIN flow with secp256k1 cryptographic authentication, simulated digital identity (nftAddress), real-time dashboard with automatic polling for real sensors, integrity verification via hashes and Merkle root, dual-layer storage (PostgreSQL + KV store), Solana devnet wallet under project control, homepage with Featured Public Sensors.
+**Implemented:** End-to-end DePIN flow with secp256k1 cryptographic authentication, simulated digital identity (nftAddress), real-time dashboard with automatic polling for real sensors, integrity verification via hashes and Merkle root, dual-layer storage (PostgreSQL + KV store), Solana devnet wallet under project control, homepage with Featured Public Sensors. Structured documentation with ADR index and timeline in `docs/`.
 
-**Pending:** Real NFT minting on Solana devnet for on-chain device identity, Merkle root calculation fix, permanent sensing station setup (ESP8266 + DHT11 on continuous USB power), backend modularization, and open source documentation.
+**Next steps (from ADR-007):**
+1. Fix Merkle tree implementation (replace linear hash with binary Merkle tree supporting inclusion proofs)
+2. Define NFT metadata schema for device identity
+3. Define anchoring transaction format (Memo Program vs metadata update vs PDA)
+4. Implement real Solana devnet integration (NFT minting + dataset anchoring)
+
+**Also pending:** Permanent sensing station setup (ESP8266 + DHT11 on continuous USB power), backend modularization, and open source documentation.
