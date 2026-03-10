@@ -84,8 +84,14 @@
 - Primeira leitura pós-reset: 24.7°C / 83% humidade — HTTP 200, dados enviados com sucesso.
 - Rede WiFi mantida: `MVISIA_2.4GHz` (Inova USP).
 
+### Reatividade do frontend (10/03)
+- Diagnóstico: o frontend não atualizava leituras de sensores reais automaticamente — o polling de live data só funcionava para sensores mock (gerava dados fake locais a cada 2s), e sensores `mode === 'real'` eram excluídos explicitamente do polling.
+- `sensor-detail.tsx`: adicionado `useEffect` com polling da API (`readingAPI.list`) a cada 15 segundos para sensores reais, com chamada imediata no mount. Também atualiza o Merkle root periodicamente.
+- `dashboard.tsx`: sparkline dos sensor cards agora diferencia mock (dados gerados localmente) vs real (polling da API a cada 15s). Adicionado polling global de sensores + stats a cada 30s como fallback para o Supabase Realtime.
+- `api.ts`: adicionado header `Cache-Control: no-cache, no-store` em todas as chamadas para evitar dados stale por cache do browser ou CDN.
+
 ## Estado Atual e Próximos Passos
 
-**Implementado**: Fluxo DePIN completo com autenticação criptográfica (secp256k1), identidade digital simulada (nftAddress), dashboard com dados em tempo real, verificação de integridade via hashes e Merkle root, duas camadas de armazenamento (PostgreSQL para persistência, KV store para dashboard). Nova carteira Solana devnet sob controle do projeto (Phantom Wallet).
+**Implementado**: Fluxo DePIN completo com autenticação criptográfica (secp256k1), identidade digital simulada (nftAddress), dashboard com dados em tempo real e polling automático para sensores reais, verificação de integridade via hashes e Merkle root, duas camadas de armazenamento (PostgreSQL para persistência, KV store para dashboard). Nova carteira Solana devnet sob controle do projeto (Phantom Wallet).
 
 **Pendente**: Mint real de NFTs na Solana devnet para identidade on-chain dos dispositivos (código base existe em `solanaService.ts`, necessita adaptação para Deno), fix do cálculo do Merkle root, setup de estação permanente de sensoriamento (ESP8266 + DHT11 em Dell antigo ou alimentação USB contínua), e documentação para open source.
