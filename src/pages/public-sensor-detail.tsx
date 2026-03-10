@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { publicAPI } from '../lib/api';
+import { verifyMerkleRoot } from '../lib/merkle';
 import { generateHistoricalReadings, generateLiveReading } from '../lib/mock-data';
 import { ImageWithFallback } from '../components/figma/ImageWithFallback';
 import { Label } from '../components/ui/label';
@@ -153,15 +154,30 @@ export function PublicSensorDetailPage({
     }
   };
 
-  const handleVerifyMerkle = () => {
+  const handleVerifyMerkle = async () => {
     if (!verifyMerkleInput.trim()) {
       toast.error('Please enter a Merkle root to verify');
       return;
     }
-    toast.info('Verifying Merkle root for last hour data...');
-    setTimeout(() => {
-      toast.success(`Merkle root verified for ${lastHourReadings.length} readings from the last hour`);
-    }, 1500);
+    toast.info('Verifying Merkle root client-side...');
+    try {
+      const hashes = lastHourReadings
+        .sort((a, b) => {
+          const dt = new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime();
+          if (dt !== 0) return dt;
+          return (a.id || '').localeCompare(b.id || '');
+        })
+        .map(r => r.hash || '');
+      const ok = await verifyMerkleRoot(hashes, verifyMerkleInput);
+      if (ok) {
+        toast.success(`Merkle root verified for ${lastHourReadings.length} readings (client-side)`);
+      } else {
+        toast.error('Merkle root does not match the current readings');
+      }
+    } catch (err) {
+      console.error('Merkle verification failed:', err);
+      toast.error('Verification failed');
+    }
   };
 
   const statusColors = {

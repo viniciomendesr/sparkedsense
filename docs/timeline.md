@@ -152,12 +152,44 @@ Format inspired by [Keep a Changelog](https://keepachangelog.com/).
 
 ---
 
+## Phase 8 — Binary Merkle tree with inclusion proofs (10 Mar 2026)
+
+**Contributor:** Vinicio Mendes (with AI assistance — Claude)
+
+### Changed (backend — Edge Function)
+- Replaced linear hash (`SHA-256(concat(all_hashes))`) with proper binary Merkle tree: pair-wise hashing, odd leaves duplicated, domain-separated leaf nodes (`SHA-256(readingHash)`)
+- Empty tree root is now deterministic: `SHA-256('') = e3b0c44...` (was `crypto.randomUUID()`)
+- Deterministic sort before tree construction: readings sorted by timestamp ascending, then by ID as tiebreaker
+- New module `supabase/functions/server/lib/merkle.ts`: `buildTree()`, `generateProof()`, `verifyProof()`, `sha256Hex()`
+- Replaced all 6 callsites of old `calculateMerkleRoot` in `index.ts`
+- Enhanced `GET /sensors/:id/hourly-merkle` and public equivalent to return `leafCount` and `leaves[]`
+- Enhanced `POST /verify/merkle` with inclusion proof mode (`leafHash + proof + merkleRoot`)
+- New endpoint `GET /sensors/:id/merkle-proof/:leafIndex` (authenticated)
+- New endpoint `GET /public/sensors/:sensorId/merkle-proof/:leafIndex` (public)
+
+### Added (frontend)
+- `src/lib/merkle.ts`: browser-side verification via Web Crypto API (`verifyMerkleProof()`, `verifyMerkleRoot()`)
+- `src/lib/types.ts`: `MerkleProofStep`, `MerkleProofData` types
+- `src/lib/api.ts`: `merkleAPI.getProof()`, `publicAPI.getPublicMerkleProof()` methods
+
+### Changed (frontend)
+- `sensor-detail.tsx`: replaced fake `handleVerifyMerkle` (setTimeout + toast) with real client-side tree reconstruction and root comparison
+- `public-sensor-detail.tsx`: same real verification for public sensor view
+- `audit.tsx`: replaced 3 fake verifications (Quick Verify, Merkle root input, single hash input) with real cryptographic verification; updated "How to Verify Independently" instructions to describe binary Merkle tree algorithm
+
+### Fixed
+- Removed Deno-only JSR packages (`@jsr/std__crypto`, `@jsr/supabase__supabase-js`) and `hono` from root `package.json` — these caused `yarn install` failure on Vercel (JSR registry unreachable from npm)
+
+> Merkle tree decision documented in [ADR-007](adr/007-merkle-tree-before-blockchain.md)
+
+---
+
 ## Current status
 
-**Implemented:** End-to-end DePIN flow with secp256k1 cryptographic authentication, simulated digital identity (nftAddress), real-time dashboard with automatic polling for real sensors, integrity verification via hashes and Merkle root, dual-layer storage (PostgreSQL + KV store), Solana devnet wallet under project control, homepage with Featured Public Sensors. Structured documentation with ADR index and timeline in `docs/`.
+**Implemented:** End-to-end DePIN flow with secp256k1 cryptographic authentication, simulated digital identity (nftAddress), real-time dashboard with automatic polling for real sensors, binary Merkle tree with inclusion proofs for dataset integrity verification (client-side and server-side), dual-layer storage (PostgreSQL + KV store), Solana devnet wallet under project control, homepage with Featured Public Sensors. Structured documentation with ADR index and timeline in `docs/`.
 
 **Next steps (from ADR-007):**
-1. Fix Merkle tree implementation (replace linear hash with binary Merkle tree supporting inclusion proofs)
+1. ~~Fix Merkle tree implementation~~ — done (Phase 8)
 2. Define NFT metadata schema for device identity
 3. Define anchoring transaction format (Memo Program vs metadata update vs PDA)
 4. Implement real Solana devnet integration (NFT minting + dataset anchoring)
