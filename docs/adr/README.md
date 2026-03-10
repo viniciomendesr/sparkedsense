@@ -21,3 +21,4 @@ Each ADR documents a single architectural decision with its context, rationale, 
 | [005](005-blockchain-identity-reset.md) | Blockchain identity reset and wallet ownership | Accepted | 2026-03-10 | 2026-03-10 16:52 |
 | [006](006-cors-header-whitelisting.md) | CORS header whitelisting strategy | Accepted | 2026-03-10 | 2026-03-10 16:52 |
 | [007](007-merkle-tree-before-blockchain.md) | Fix Merkle tree and define on-chain schema before blockchain integration | Accepted | 2026-03-10 | 2026-03-10 17:32 |
+| [008](008-solana-devnet-over-testnet.md) | Solana devnet over testnet for development and academic validation | Accepted | 2026-03-10 | 2026-03-10 17:45 |
