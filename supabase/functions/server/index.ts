@@ -4,6 +4,7 @@ import { logger } from "npm:hono/logger";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.7";
 import * as kv from "./kv_store.ts";
 import { crypto } from "jsr:@std/crypto@1.0.3";
+import * as secp256k1 from "https://esm.sh/@noble/curves@1.4.0/secp256k1";
 
 const app = new Hono();
 
@@ -1208,6 +1209,284 @@ setInterval(async () => {
     console.error('Error in periodic mock data generation:', error instanceof Error ? error.message : String(error));
   }
 }, 5000); // Every 5 seconds
+
+// ======================
+// Device Registration Routes (ESP8266 physical devices - no user JWT required)
+// ======================
+
+// POST /server/register-device
+// Step 1: {macAddress, publicKey}            → {challenge}
+// Step 2: {publicKey, challenge, signature}  → {nftAddress, claimToken, txSignature}
+app.post("/server/register-device", async (c) => {
+  try {
+    const body = await c.req.json();
+    const { macAddress, publicKey, challenge, signature } = body;
+
+    // --- STEP 1: Issue challenge ---
+    if (!challenge && !signature) {
+      if (!macAddress || !publicKey) {
+        return c.json({ error: "Missing macAddress or publicKey" }, 400);
+      }
+
+      const challengeBytes = new Uint8Array(32);
+      crypto.getRandomValues(challengeBytes);
+      const challengeValue = Array.from(challengeBytes)
+        .map(b => b.toString(16).padStart(2, '0')).join('');
+
+      const { error: upsertError } = await supabase
+        .from('devices')
+        .upsert(
+          { "publicKey": publicKey, "macAddress": macAddress, "challenge": challengeValue },
+          { onConflict: 'publicKey' }
+        );
+
+      if (upsertError) {
+        console.error('Challenge upsert error:', upsertError);
+        return c.json({ error: 'DB error: ' + upsertError.message }, 500);
+      }
+
+      console.log(`🔑 Challenge issued for ${publicKey.substring(0, 20)}...`);
+      return c.json({ challenge: challengeValue });
+    }
+
+    // --- STEP 2: Verify signature and complete registration ---
+    if (!publicKey || !challenge || !signature) {
+      return c.json({ error: "Missing publicKey, challenge or signature" }, 400);
+    }
+
+    const { data: device, error: fetchError } = await supabase
+      .from('devices')
+      .select('*')
+      .eq('publicKey', publicKey)
+      .single();
+
+    if (fetchError || !device) {
+      return c.json({ error: 'Device not found' }, 404);
+    }
+
+    if (device.challenge !== challenge) {
+      return c.json({ error: 'Invalid challenge' }, 401);
+    }
+
+    // Already registered? Return existing identity (idempotent)
+    if (device.nftAddress) {
+      console.log(`ℹ️  Device already registered, returning existing identity`);
+      return c.json({
+        nftAddress: device.nftAddress,
+        claimToken: device.claimToken,
+        txSignature: device.txSignature,
+      });
+    }
+
+    // Verify secp256k1 signature using @noble/curves (Deno-native)
+    const challengeBytes = new TextEncoder().encode(challenge);
+    const hashBuffer = await crypto.subtle.digest('SHA-256', challengeBytes);
+    const msgHash = new Uint8Array(hashBuffer);
+
+    // Build 64-byte compact signature from r,s hex strings
+    const rHex = signature.r.padStart(64, '0');
+    const sHex = signature.s.padStart(64, '0');
+    const sigBytes = new Uint8Array(64);
+    for (let i = 0; i < 32; i++) {
+      sigBytes[i] = parseInt(rHex.substring(i * 2, i * 2 + 2), 16);
+      sigBytes[32 + i] = parseInt(sHex.substring(i * 2, i * 2 + 2), 16);
+    }
+
+    // Parse uncompressed public key (04 + 64 bytes)
+    const pubKeyBytes = new Uint8Array(publicKey.length / 2);
+    for (let i = 0; i < pubKeyBytes.length; i++) {
+      pubKeyBytes[i] = parseInt(publicKey.substring(i * 2, i * 2 + 2), 16);
+    }
+
+    const sigObj = secp256k1.secp256k1.Signature.fromCompact(sigBytes);
+    // lowS: false — uECC on ESP8266 doesn't normalize to low-S (BIP-0062)
+    const isValid = secp256k1.secp256k1.verify(sigObj, msgHash, pubKeyBytes, { lowS: false });
+    if (!isValid) {
+      return c.json({ error: 'Invalid signature' }, 401);
+    }
+
+    // Generate device identity (simulated NFT address - 64 hex chars like a Solana pubkey)
+    const nftBytes = new Uint8Array(32);
+    crypto.getRandomValues(nftBytes);
+    const nftAddress = Array.from(nftBytes).map(b => b.toString(16).padStart(2, '0')).join('');
+
+    const tokenBytes = new Uint8Array(16);
+    crypto.getRandomValues(tokenBytes);
+    const claimToken = Array.from(tokenBytes).map(b => b.toString(16).padStart(2, '0')).join('');
+
+    const txSig = 'devnet_sim_' + Array.from(nftBytes).slice(0, 16)
+      .map(b => b.toString(16).padStart(2, '0')).join('');
+
+    const { error: updateError } = await supabase
+      .from('devices')
+      .update({
+        "nftAddress": nftAddress,
+        "claimToken": claimToken,
+        "txSignature": txSig,
+        "challenge": null,
+      })
+      .eq('publicKey', publicKey);
+
+    if (updateError) {
+      console.error('Device update error:', updateError);
+      return c.json({ error: 'DB error: ' + updateError.message }, 500);
+    }
+
+    console.log(`✅ Device registered: ${publicKey.substring(0, 20)}... → nft: ${nftAddress.substring(0, 16)}...`);
+    return c.json({ nftAddress, claimToken, txSignature: txSig });
+
+  } catch (err: any) {
+    console.error('register-device error:', err);
+    return c.json({ error: err.message || 'Internal server error' }, 500);
+  }
+});
+
+// POST /server/sensor-data (no user JWT required)
+// {nftAddress, signature: {r, s}, payload: {humidity, temperature, timestamp}}
+app.post("/server/sensor-data", async (c) => {
+  try {
+    const body = await c.req.json();
+    const { nftAddress, signature, payload } = body;
+
+    if (!nftAddress || !signature || !payload) {
+      return c.json({ error: 'Missing nftAddress, signature, or payload' }, 400);
+    }
+
+    // Fetch device by nftAddress
+    const { data: device, error: fetchError } = await supabase
+      .from('devices')
+      .select('*')
+      .eq('nftAddress', nftAddress)
+      .single();
+
+    if (fetchError || !device) {
+      return c.json({ error: 'Device not found for nftAddress: ' + nftAddress }, 404);
+    }
+
+    if (device.revoked) {
+      return c.json({ error: 'Device revoked' }, 403);
+    }
+
+    // Rate limit: 55s minimum between readings
+    const nowSec = Math.floor(Date.now() / 1000);
+    if (device.lastTsSeen && (nowSec - Number(device.lastTsSeen)) < 55) {
+      return c.json({ error: 'Rate limited - wait before sending another reading' }, 429);
+    }
+
+    // Canonical JSON: sort keys alphabetically (must match ESP)
+    const sortedKeys = Object.keys(payload).sort();
+    const canonicalObj: Record<string, unknown> = {};
+    for (const k of sortedKeys) canonicalObj[k] = payload[k];
+    const canonicalJson = JSON.stringify(canonicalObj);
+
+    // Verify secp256k1 signature using @noble/curves (Deno-native)
+    const canonicalBytes = new TextEncoder().encode(canonicalJson);
+    const hashBuffer = await crypto.subtle.digest('SHA-256', canonicalBytes);
+    const msgHash = new Uint8Array(hashBuffer);
+
+    const rHex = signature.r.padStart(64, '0');
+    const sHex = signature.s.padStart(64, '0');
+    const sigBytes = new Uint8Array(64);
+    for (let i = 0; i < 32; i++) {
+      sigBytes[i] = parseInt(rHex.substring(i * 2, i * 2 + 2), 16);
+      sigBytes[32 + i] = parseInt(sHex.substring(i * 2, i * 2 + 2), 16);
+    }
+
+    const pubKeyBytes = new Uint8Array(device.publicKey.length / 2);
+    for (let i = 0; i < pubKeyBytes.length; i++) {
+      pubKeyBytes[i] = parseInt(device.publicKey.substring(i * 2, i * 2 + 2), 16);
+    }
+
+    const sigObj = secp256k1.secp256k1.Signature.fromCompact(sigBytes);
+    // lowS: false — uECC on ESP8266 doesn't normalize to low-S (BIP-0062)
+    if (!secp256k1.secp256k1.verify(sigObj, msgHash, pubKeyBytes, { lowS: false })) {
+      return c.json({ error: 'Invalid signature' }, 401);
+    }
+
+    // Store in sensor_readings table (PostgreSQL)
+    const readingTimestamp = new Date(Number(payload.timestamp) * 1000).toISOString();
+    const { error: insertError } = await supabase
+      .from('sensor_readings')
+      .insert({
+        nft_address: nftAddress,
+        timestamp: readingTimestamp,
+        data: payload,
+      });
+
+    if (insertError) {
+      console.error('Insert reading error:', insertError);
+      return c.json({ error: 'DB error: ' + insertError.message }, 500);
+    }
+
+    // Update device lastTsSeen
+    await supabase
+      .from('devices')
+      .update({ "lastTsSeen": nowSec })
+      .eq('nftAddress', nftAddress);
+
+    // Also store in KV store so the dashboard Live Stream / Real-Time Chart can display it
+    try {
+      const allSensors = await kv.getByPrefix('sensor:');
+      const linkedSensor = allSensors.find((s: any) => s.claimToken === device.claimToken);
+
+      if (linkedSensor) {
+        // Determine sensor type config for unit
+        const typeConfigs: Record<string, { unit: string; variable: string }> = {
+          temperature: { unit: '°C', variable: 'temperature' },
+          humidity: { unit: '%', variable: 'humidity' },
+          ph: { unit: 'pH', variable: 'ph_level' },
+        };
+        const config = typeConfigs[linkedSensor.type] || typeConfigs.temperature;
+        const mainValue = payload.temperature ?? payload.humidity ?? payload.ph_level ?? 0;
+
+        // Hash the reading data
+        const readingData = JSON.stringify({
+          sensorId: linkedSensor.id,
+          timestamp: readingTimestamp,
+          value: mainValue,
+          unit: config.unit,
+        });
+        const hashBuf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(readingData));
+        const hash = Array.from(new Uint8Array(hashBuf)).map(b => b.toString(16).padStart(2, '0')).join('');
+
+        const readingId = crypto.randomUUID();
+        const kvReading = {
+          id: readingId,
+          sensorId: linkedSensor.id,
+          timestamp: readingTimestamp,
+          variable: config.variable,
+          value: mainValue,
+          unit: config.unit,
+          verified: true,
+          hash,
+          signature: `device_sig_${signature.r.substring(0, 16)}`,
+        };
+
+        await kv.set(`reading:${linkedSensor.id}:${readingId}`, kvReading);
+
+        // Update sensor status to active + last reading
+        linkedSensor.status = 'active';
+        linkedSensor.lastReading = kvReading;
+        linkedSensor.updatedAt = new Date().toISOString();
+        await kv.set(`sensor:${linkedSensor.owner}:${linkedSensor.id}`, linkedSensor);
+
+        console.log(`📊 KV reading stored for sensor "${linkedSensor.name}" (${linkedSensor.id})`);
+      } else {
+        console.log(`ℹ️  No KV sensor linked to claimToken ${device.claimToken?.substring(0, 12)}...`);
+      }
+    } catch (kvErr: any) {
+      // KV write is best-effort — don't fail the main request
+      console.error('KV write error (non-fatal):', kvErr.message);
+    }
+
+    console.log(`📊 Reading stored for ${nftAddress.substring(0, 16)}...: ${canonicalJson}`);
+    return c.json({ success: true });
+
+  } catch (err: any) {
+    console.error('sensor-data error:', err);
+    return c.json({ error: err.message || 'Internal server error' }, 500);
+  }
+});
 
 // Serve with proper CORS handling
 Deno.serve(async (req) => {

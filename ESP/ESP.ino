@@ -14,7 +14,7 @@
 // =====================================================
 // --- DHT11 Configuration ---
 // =====================================================
-#define DHT_PIN     D4       // Pino de dados do DHT11 (GPIO2). Mude se necessário.
+#define DHT_PIN     D2       // Pino de dados do DHT11 (GPIO4). D4 pode conflitar com boot.
 #define DHT_TYPE    DHT11
 DHT dht(DHT_PIN, DHT_TYPE);
 
@@ -28,10 +28,12 @@ unsigned long lastSendTime = 0;
 const char* ssid = "firetheboxv2";
 const char* password = "queimeacaixav2";
 
-// API Endpoints
-const char* registerDeviceEndpoint = "https://sparkedsensemvp.vercel.app/api/register-device";
-const char* getClaimTokenEndpoint  = "https://sparkedsensemvp.vercel.app/api/get-claim-token";
-const char* sensorDataEndpoint     = "https://sparkedsensemvp.vercel.app/api/sensor-data"; // endpoint correto
+// Supabase project anon key (used as Bearer token - allows unauthenticated device access)
+const char* supabaseAnonKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRqemV4aXZ2ZGR6emR1ZXRta2VsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjE3ODYzMzAsImV4cCI6MjA3NzM2MjMzMH0.hW1SyZKQRzI-ghokMb-F5uccV52vxixE0aH78lNZ1F4";
+
+// API Endpoints (Supabase Edge Function - already deployed and running)
+const char* registerDeviceEndpoint = "https://djzexivvddzzduetmkel.supabase.co/functions/v1/server/register-device";
+const char* sensorDataEndpoint     = "https://djzexivvddzzduetmkel.supabase.co/functions/v1/server/sensor-data";
 
 // =====================================================
 // --- EEPROM Configuration ---
@@ -150,6 +152,7 @@ bool registerDevice() {
 
     http.begin(client, registerDeviceEndpoint);
     http.addHeader("Content-Type", "application/json");
+    http.addHeader("Authorization", String("Bearer ") + supabaseAnonKey);
     int code = http.POST(payload);
     String resp = http.getString();
     http.end();
@@ -198,6 +201,7 @@ bool registerDevice() {
 
     http.begin(client, registerDeviceEndpoint);
     http.addHeader("Content-Type", "application/json");
+    http.addHeader("Authorization", String("Bearer ") + supabaseAnonKey);
     int code = http.POST(payload);
     String resp = http.getString();
     http.end();
@@ -425,6 +429,7 @@ void loop() {
   HTTPClient http;
   http.begin(wifiClient, sensorDataEndpoint);
   http.addHeader("Content-Type", "application/json");
+  http.addHeader("Authorization", String("Bearer ") + supabaseAnonKey);
 
   int code = http.POST(finalJson);
   String response = http.getString();
