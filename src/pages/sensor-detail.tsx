@@ -128,9 +128,8 @@ export function SensorDetailPage({
     loadData();
   }, [sensor.id, sensor.type, sensor.mode, accessToken]);
 
-  // Simulate live streaming
+  // Simulate live streaming for MOCK sensors
   useEffect(() => {
-    // Only generate mock live data for mock sensors
     if (!isStreaming || sensor.status !== 'active' || sensor.mode === 'real') return;
 
     const interval = setInterval(() => {
@@ -143,6 +142,34 @@ export function SensorDetailPage({
 
     return () => clearInterval(interval);
   }, [isStreaming, sensor.id, sensor.type, sensor.status, sensor.mode]);
+
+  // Poll real sensor data from API every 15 seconds
+  useEffect(() => {
+    if (!isStreaming || sensor.mode !== 'real' || !accessToken) return;
+
+    const pollReadings = async () => {
+      try {
+        const readingsData = await readingAPI.list(sensor.id, accessToken, 100);
+        const parsedReadings = readingsData.map(r => ({
+          ...r,
+          timestamp: new Date(r.timestamp),
+        }));
+        if (parsedReadings.length > 0) {
+          setReadings(parsedReadings);
+        }
+        // Also refresh merkle root
+        const merkleData = await merkleAPI.getHourlyRoot(sensor.id, accessToken).catch(() => ({ merkleRoot: '' }));
+        if (merkleData.merkleRoot) {
+          setHourlyMerkleRoot(merkleData.merkleRoot);
+        }
+      } catch (error) {
+        console.error('Failed to poll readings:', error);
+      }
+    };
+
+    const interval = setInterval(pollReadings, 15000);
+    return () => clearInterval(interval);
+  }, [isStreaming, sensor.id, sensor.mode, accessToken]);
 
   // Real-time subscription for dataset updates
   useEffect(() => {

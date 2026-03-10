@@ -103,7 +103,36 @@ export function DashboardPage({ onViewSensor }: DashboardPageProps) {
     };
   }, [user, accessToken]);
 
-  // Simulate live data for active sensors
+  // Poll sensors + stats every 30 seconds (fallback if Supabase Realtime misses updates)
+  useEffect(() => {
+    if (!accessToken) return;
+
+    const pollDashboard = async () => {
+      try {
+        const [sensorsData, statsData] = await Promise.all([
+          sensorAPI.list(accessToken),
+          statsAPI.get(accessToken),
+        ]);
+        const parsedSensors = sensorsData.map(s => ({
+          ...s,
+          createdAt: new Date(s.createdAt),
+          lastReading: s.lastReading ? {
+            ...s.lastReading,
+            timestamp: new Date(s.lastReading.timestamp),
+          } : undefined,
+        }));
+        setSensors(parsedSensors);
+        setStats(statsData);
+      } catch (error) {
+        console.error('Dashboard poll error:', error);
+      }
+    };
+
+    const interval = setInterval(pollDashboard, 30000);
+    return () => clearInterval(interval);
+  }, [accessToken]);
+
+  // Live data for active sensors: mock sensors use generated data, real sensors poll API
   useEffect(() => {
     const intervals: NodeJS.Timeout[] = [];
 
@@ -118,37 +147,66 @@ export function DashboardPage({ onViewSensor }: DashboardPageProps) {
           })),
           isConnected: true,
         };
-        
+
         setLiveDataMap(prev => new Map(prev).set(sensor.id, initialData));
 
-        // Update periodically
-        const interval = setInterval(() => {
-          setLiveDataMap(prev => {
-            const current = prev.get(sensor.id);
-            if (!current) return prev;
+        if (sensor.mode === 'mock') {
+          // Mock sensors: generate fake data every 2 seconds
+          const interval = setInterval(() => {
+            setLiveDataMap(prev => {
+              const current = prev.get(sensor.id);
+              if (!current) return prev;
 
-            const lastValue = current.values[current.values.length - 1]?.value;
-            const newReading = generateLiveReading(sensor.id, sensor.type, lastValue);
-            
-            const newValues = [
-              ...current.values.slice(-29),
-              { timestamp: newReading.timestamp, value: newReading.value }
-            ];
+              const lastValue = current.values[current.values.length - 1]?.value;
+              const newReading = generateLiveReading(sensor.id, sensor.type, lastValue);
 
-            const newMap = new Map(prev);
-            newMap.set(sensor.id, { ...current, values: newValues });
-            return newMap;
-          });
-        }, 2000);
+              const newValues = [
+                ...current.values.slice(-29),
+                { timestamp: newReading.timestamp, value: newReading.value }
+              ];
 
-        intervals.push(interval);
+              const newMap = new Map(prev);
+              newMap.set(sensor.id, { ...current, values: newValues });
+              return newMap;
+            });
+          }, 2000);
+          intervals.push(interval);
+        } else if (sensor.mode === 'real' && accessToken) {
+          // Real sensors: poll API every 15 seconds
+          const pollRealData = async () => {
+            try {
+              const readingsData = await readingAPI.list(sensor.id, accessToken, 30);
+              const parsedReadings = readingsData.map(r => ({
+                timestamp: new Date(r.timestamp),
+                value: r.value,
+              }));
+              if (parsedReadings.length > 0) {
+                setLiveDataMap(prev => {
+                  const newMap = new Map(prev);
+                  newMap.set(sensor.id, {
+                    sensorId: sensor.id,
+                    values: parsedReadings,
+                    isConnected: true,
+                  });
+                  return newMap;
+                });
+              }
+            } catch (error) {
+              console.error('Failed to poll real sensor data:', error);
+            }
+          };
+          // Poll immediately, then every 15 seconds
+          pollRealData();
+          const interval = setInterval(pollRealData, 15000);
+          intervals.push(interval);
+        }
       }
     });
 
     return () => {
       intervals.forEach(interval => clearInterval(interval));
     };
-  }, [sensors]);
+  }, [sensors, accessToken]);
 
   const handleAddSensor = async (newSensor: Omit<Sensor, 'id' | 'owner' | 'createdAt' | 'status'>) => {
     if (!accessToken) return;

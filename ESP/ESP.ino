@@ -25,8 +25,8 @@ unsigned long lastSendTime = 0;
 // =====================================================
 // --- Network Configuration ---
 // =====================================================
-const char* ssid = "MVISIA_2.4GHz";
-const char* password = "mvisia2020";
+const char* ssid = "firetheboxv2";
+const char* password = "queimeacaixav2";
 
 // Supabase project anon key (used as Bearer token - allows unauthenticated device access)
 const char* supabaseAnonKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRqemV4aXZ2ZGR6emR1ZXRta2VsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjE3ODYzMzAsImV4cCI6MjA3NzM2MjMzMH0.hW1SyZKQRzI-ghokMb-F5uccV52vxixE0aH78lNZ1F4";

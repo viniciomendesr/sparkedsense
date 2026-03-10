@@ -62,8 +62,30 @@
 ### Teste end-to-end bem-sucedido (10/03)
 - Sensor DHT11 físico → ESP8266 → WiFi → HTTPS → Supabase Edge Function → verificação de assinatura secp256k1 → armazenamento em PostgreSQL + KV store → dashboard com Live Chart e Recent Readings em tempo real. Status do sensor mudou de "Inactive" para "Active".
 
+## Fase 5 — Reset e Nova Identidade Blockchain (10 Mar 2026)
+**Contribuidor**: Vinicio Mendes (com assistência de IA — Claude)
+
+### Transição de ownership (10/03)
+- Remoção da secret key antiga da Solana devnet (pertencente a Pedro Goularte, que saiu do projeto). Criação de nova carteira Solana devnet via Phantom Wallet, agora sob controle exclusivo de Vinicio Mendes.
+- Nova public key Solana (devnet): `6RuAxerE8GsMziM4c77ZzakfMAiebSfTE3LX4S1EyMNn` (base58).
+- Airdrop de 10 SOL na devnet para futuros testes de mint de NFTs.
+
+### Reset completo da base de dados (10/03)
+- Limpeza total das 4 tabelas do Supabase via SQL Editor: `DELETE FROM sensor_readings`, `DELETE FROM devices`, `DELETE FROM kv_store_4a89e1c9`, `DELETE FROM users`.
+- Remoção dos utilizadores no Supabase Auth (painel Authentication → Users).
+- Objetivo: eliminar dados de teste antigos, sensores mock acumulados, e referências à chave Solana anterior.
+
+### Re-registo do dispositivo físico (10/03)
+- Reset da EEPROM do ESP8266 via comando `RESET` no Serial Monitor (limpa chaves e nftAddress antigos).
+- Novo registo challenge-response bem-sucedido com identidade renovada:
+  - NFT Address: `b1f7dbebfd314fdb03f624486e9da1ff68071a65ae22a604b341f32bf0dc580d`
+  - Claim Token: `ed52b6ee5d816593d65cd0c51927ddee`
+  - Transaction: `devnet_sim_b1f7dbebfd314fdb03f624486e9da1ff`
+- Primeira leitura pós-reset: 24.7°C / 83% humidade — HTTP 200, dados enviados com sucesso.
+- Rede WiFi mantida: `MVISIA_2.4GHz` (Inova USP).
+
 ## Estado Atual e Próximos Passos
 
-**Implementado**: Fluxo DePIN completo com autenticação criptográfica (secp256k1), identidade digital simulada (nftAddress), dashboard com dados em tempo real, verificação de integridade via hashes e Merkle root, duas camadas de armazenamento (PostgreSQL para persistência, KV store para dashboard).
+**Implementado**: Fluxo DePIN completo com autenticação criptográfica (secp256k1), identidade digital simulada (nftAddress), dashboard com dados em tempo real, verificação de integridade via hashes e Merkle root, duas camadas de armazenamento (PostgreSQL para persistência, KV store para dashboard). Nova carteira Solana devnet sob controle do projeto (Phantom Wallet).
 
-**Pendente**: Mint real de NFTs na Solana devnet para identidade on-chain dos dispositivos (código base existe em `solanaService.ts`, necessita adaptação para Deno), fix do cálculo do Merkle root, e documentação para open source.
+**Pendente**: Mint real de NFTs na Solana devnet para identidade on-chain dos dispositivos (código base existe em `solanaService.ts`, necessita adaptação para Deno), fix do cálculo do Merkle root, setup de estação permanente de sensoriamento (ESP8266 + DHT11 em Dell antigo ou alimentação USB contínua), e documentação para open source.
