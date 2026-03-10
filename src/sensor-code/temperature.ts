@@ -21,8 +21,8 @@ DHT dht(DHTPIN, DHTTYPE);
 // --- Network Configuration ---
 const char* ssid = "YOUR_WIFI_NAME";
 const char* password = "YOUR_WIFI_PASSWORD";
-const char* registerApiEndpoint = "https://sparked-three.vercel.app/api/register-device";
-const char* dataApiEndpoint = "https://sparked-three.vercel.app/api/sensor-data";
+const char* registerApiEndpoint = "https://sparkedsensemvp.vercel.app/api/register-device";
+const char* dataApiEndpoint = "https://sparkedsensemvp.vercel.app/api/sensor-data";
 
 // --- EEPROM Configuration ---
 #define EEPROM_SIZE 128
