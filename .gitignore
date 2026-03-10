@@ -7,3 +7,4 @@ supabase/.temp/
 .env
 
 .claude
+.vscode
