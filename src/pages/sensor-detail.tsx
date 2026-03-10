@@ -167,6 +167,8 @@ export function SensorDetailPage({
       }
     };
 
+    // Poll immediately, then every 15 seconds
+    pollReadings();
     const interval = setInterval(pollReadings, 15000);
     return () => clearInterval(interval);
   }, [isStreaming, sensor.id, sensor.mode, accessToken]);

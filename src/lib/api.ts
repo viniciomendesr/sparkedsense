@@ -8,6 +8,7 @@ export const getAuthHeaders = (accessToken?: string) => {
   return {
     "Content-Type": "application/json",
     Authorization: `Bearer ${accessToken || publicAnonKey}`,
+    "Cache-Control": "no-cache, no-store",
   };
 };
 
