@@ -1,5 +1,5 @@
 import { projectId, publicAnonKey } from "../utils/supabase/info";
-import { Sensor, Reading, Dataset } from "./types";
+import { Sensor, Reading, Dataset, MerkleProofData } from "./types";
 
 const API_BASE = `https://${projectId}.supabase.co/functions/v1/server`;
 
@@ -388,6 +388,21 @@ export const merkleAPI = {
     }
     return response.json();
   },
+
+  getProof: async (sensorId: string, leafIndex: number, accessToken: string): Promise<{ proof: MerkleProofData; merkleRoot: string; leafCount: number }> => {
+    const response = await fetch(
+      `${API_BASE}/sensors/${sensorId}/merkle-proof/${leafIndex}`,
+      {
+        method: "GET",
+        headers: getAuthHeaders(accessToken),
+      }
+    );
+    if (!response.ok) {
+      const error = await response.text();
+      throw new Error(`Failed to fetch Merkle proof: ${error}`);
+    }
+    return response.json();
+  },
 };
 
 // Public API (no authentication required)
@@ -474,8 +489,22 @@ export const publicAPI = {
     return response.json();
   },
 
+  getPublicMerkleProof: async (sensorId: string, leafIndex: number): Promise<{ proof: MerkleProofData; merkleRoot: string; leafCount: number }> => {
+    const response = await fetch(
+      `${API_BASE}/public/sensors/${sensorId}/merkle-proof/${leafIndex}`,
+      {
+        method: "GET",
+        headers: getAuthHeaders(),
+      }
+    );
+    if (!response.ok) {
+      const error = await response.text();
+      throw new Error(`Failed to fetch public Merkle proof: ${error}`);
+    }
+    return response.json();
+  },
+
   verifyPublicMerkle: async (sensorId: string, merkleRoot: string) => {
-    // For public verification, we compare against the current hourly Merkle root
     const currentData = await publicAPI.getPublicHourlyMerkle(sensorId);
     return {
       verified: currentData.merkleRoot === merkleRoot,

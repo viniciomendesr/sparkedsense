@@ -43,9 +43,23 @@ export interface Dataset {
   previewReadings?: Reading[];
 }
 
+export interface MerkleProofStep {
+  hash: string;
+  position: "left" | "right";
+}
+
+export interface MerkleProofData {
+  leafHash: string;
+  leafIndex: number;
+  proof: MerkleProofStep[];
+  root: string;
+}
+
 export interface HourlyMerkleData {
   sensorId: string;
   merkleRoot: string;
+  leafCount: number;
+  leaves: string[];
   timestamp: Date;
   readingsCount: number;
 }

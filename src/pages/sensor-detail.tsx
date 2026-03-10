@@ -43,6 +43,7 @@ import { useAuth } from '../lib/auth-context';
 import { readingAPI, datasetAPI, merkleAPI, sensorAPI } from '../lib/api';
 import { supabase } from '../utils/supabase/client';
 import { toast } from 'sonner@2.0.3';
+import { verifyMerkleRoot } from '../lib/merkle';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 
 interface SensorDetailPageProps {
@@ -110,6 +111,7 @@ export function SensorDetailPage({
         }
         setDatasets(parsedDatasets);
         setHourlyMerkleRoot(merkleData.merkleRoot || '');
+
       } catch (error: any) {
         console.error('Failed to load sensor data:', error);
         // For real sensors, keep readings empty on error
@@ -158,9 +160,10 @@ export function SensorDetailPage({
           setReadings(parsedReadings);
         }
         // Also refresh merkle root
-        const merkleData = await merkleAPI.getHourlyRoot(sensor.id, accessToken).catch(() => ({ merkleRoot: '' }));
+        const merkleData = await merkleAPI.getHourlyRoot(sensor.id, accessToken).catch(() => ({ merkleRoot: '', leaves: [] }));
         if (merkleData.merkleRoot) {
           setHourlyMerkleRoot(merkleData.merkleRoot);
+  
         }
       } catch (error) {
         console.error('Failed to poll readings:', error);
@@ -363,16 +366,30 @@ export function SensorDetailPage({
     }
   };
 
-  const handleVerifyMerkle = () => {
+  const handleVerifyMerkle = async () => {
     if (!verifyMerkleInput.trim()) {
       toast.error('Please enter a Merkle root to verify');
       return;
     }
-    // Simulate Merkle root verification for last hour
-    toast.info('Verifying Merkle root for last hour data...');
-    setTimeout(() => {
-      toast.success(`Merkle root verified for ${lastHourReadings.length} readings from the last hour`);
-    }, 1500);
+    toast.info('Verifying Merkle root client-side...');
+    try {
+      const hashes = lastHourReadings
+        .sort((a, b) => {
+          const dt = new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime();
+          if (dt !== 0) return dt;
+          return (a.id || '').localeCompare(b.id || '');
+        })
+        .map(r => r.hash || '');
+      const ok = await verifyMerkleRoot(hashes, verifyMerkleInput);
+      if (ok) {
+        toast.success(`Merkle root verified for ${lastHourReadings.length} readings (client-side)`);
+      } else {
+        toast.error('Merkle root does not match the current readings');
+      }
+    } catch (err) {
+      console.error('Merkle verification failed:', err);
+      toast.error('Verification failed');
+    }
   };
 
   const statusColors = {

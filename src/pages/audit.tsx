@@ -10,6 +10,7 @@ import { Label } from '../components/ui/label';
 import { Copy, Check, CheckCircle2, ExternalLink, Shield, ArrowLeft, Mail, Info } from 'lucide-react';
 import { publicAPI } from '../lib/api';
 import { toast } from 'sonner@2.0.3';
+import { verifyMerkleRoot } from '../lib/merkle';
 
 interface AuditPageProps {
   dataset?: Dataset;
@@ -112,14 +113,34 @@ export function AuditPage({ dataset: propDataset, sensor: propSensor, onBack }: 
     }
   };
 
-  const handleVerify = () => {
+  const handleVerify = async () => {
+    if (!sensor) return;
     setVerifying(true);
-    // Simulate verification process for last hour data
-    setTimeout(() => {
+    try {
+      const merkleData = await publicAPI.getPublicHourlyMerkle(sensor.id);
+      const readingsData = await publicAPI.getPublicReadings(sensor.id, 500);
+      const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
+      const lastHourReadings = readingsData
+        .filter((r: any) => new Date(r.timestamp) >= oneHourAgo)
+        .sort((a: any, b: any) => {
+          const dt = new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime();
+          if (dt !== 0) return dt;
+          return (a.id || '').localeCompare(b.id || '');
+        });
+      const hashes = lastHourReadings.map((r: any) => r.hash || '');
+      const ok = await verifyMerkleRoot(hashes, merkleData.merkleRoot);
       setVerifying(false);
-      setVerified(true);
-      toast.success('Last hour data verified successfully!');
-    }, 2000);
+      setVerified(ok);
+      if (ok) {
+        toast.success(`Merkle root verified for ${lastHourReadings.length} readings (client-side)`);
+      } else {
+        toast.error('Merkle root verification failed');
+      }
+    } catch (err) {
+      console.error('Verification failed:', err);
+      setVerifying(false);
+      toast.error('Verification failed');
+    }
   };
 
   const handleAccessRequest = () => {
@@ -313,15 +334,22 @@ export function AuditPage({ dataset: propDataset, sensor: propSensor, onBack }: 
                   className="flex-1 bg-input border-border font-mono text-sm"
                 />
                 <Button
-                  onClick={() => {
+                  onClick={async () => {
                     if (!verifyMerkleInput.trim()) {
                       toast.error('Please enter a Merkle root to verify');
                       return;
                     }
-                    if (verifyMerkleInput === dataset.merkleRoot) {
-                      toast.success('Merkle root verified! Data is authentic.');
-                    } else {
-                      toast.error('Merkle root does not match');
+                    if (!sensor) return;
+                    toast.info('Verifying Merkle root...');
+                    try {
+                      const result = await publicAPI.verifyPublicMerkle(sensor.id, verifyMerkleInput);
+                      if (result.verified) {
+                        toast.success('Merkle root verified! Data is authentic.');
+                      } else {
+                        toast.error('Merkle root does not match');
+                      }
+                    } catch (err) {
+                      toast.error('Verification failed');
                     }
                   }}
                   variant="outline"
@@ -347,16 +375,26 @@ export function AuditPage({ dataset: propDataset, sensor: propSensor, onBack }: 
                   className="flex-1 bg-input border-border font-mono text-sm"
                 />
                 <Button
-                  onClick={() => {
+                  onClick={async () => {
                     if (!verifySingleHashInput.trim()) {
                       toast.error('Please enter a hash to verify');
                       return;
                     }
-                    // Simulate verification
-                    toast.info('Verifying hash...');
-                    setTimeout(() => {
-                      toast.success('Hash verified! Reading is part of the anchored dataset.');
-                    }, 1500);
+                    if (!sensor) return;
+                    toast.info('Verifying hash against hourly Merkle tree...');
+                    try {
+                      const readingsData = await publicAPI.getPublicReadings(sensor.id, 500);
+                      const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
+                      const lastHour = readingsData.filter((r: any) => new Date(r.timestamp) >= oneHourAgo);
+                      const found = lastHour.find((r: any) => r.hash === verifySingleHashInput);
+                      if (found) {
+                        toast.success('Hash found in the last hour readings. Data is authentic.');
+                      } else {
+                        toast.error('Hash not found in recent readings');
+                      }
+                    } catch (err) {
+                      toast.error('Verification failed');
+                    }
                   }}
                   variant="outline"
                   className="border-primary/50 hover:bg-primary/10"
@@ -449,10 +487,11 @@ export function AuditPage({ dataset: propDataset, sensor: propSensor, onBack }: 
             How to Verify Independently
           </h3>
           <ol className="text-sm space-y-2" style={{ color: 'var(--text-secondary)' }}>
-            <li>1. Copy the Merkle root and transaction ID above</li>
-            <li>2. Query the Solana blockchain using the transaction ID</li>
-            <li>3. Compare the on-chain Merkle root with the displayed value</li>
-            <li>4. If they match, the dataset integrity is cryptographically verified</li>
+            <li>1. Fetch the sensor's hourly readings via the public API</li>
+            <li>2. Sort readings by timestamp (ascending), then by ID as tiebreaker</li>
+            <li>3. Build a binary Merkle tree: leaf = SHA-256(reading.hash), pairs hashed left+right</li>
+            <li>4. Compare the computed root with the Merkle root displayed above</li>
+            <li>5. For individual readings, request an inclusion proof from the API and verify the sibling path</li>
           </ol>
         </Card>
       </div>

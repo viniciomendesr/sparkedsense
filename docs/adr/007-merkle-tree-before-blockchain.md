@@ -44,3 +44,14 @@ The question arose whether to implement real Solana minting immediately or first
 
 ### Risks
 - Solana SDK (Metaplex/UMI) may not work on Deno runtime — the reference implementation in `_reference/` targets Node.js. May need `@solana/web3.js` directly or an alternative approach.
+
+## Implementation (10 Mar 2026)
+
+Priority 1 (Merkle tree fix) was implemented in Phase 7:
+
+- **Backend module:** `supabase/functions/server/lib/merkle.ts` — `buildTree()`, `generateProof()`, `verifyProof()`
+- **Backend integration:** `index.ts` — replaced 6 callsites, added 2 proof endpoints
+- **Frontend module:** `src/lib/merkle.ts` — client-side verification via Web Crypto API
+- **Frontend pages:** `sensor-detail.tsx`, `public-sensor-detail.tsx`, `audit.tsx` — real cryptographic verification replacing simulated checks
+
+Priorities 2-4 (NFT schema, anchoring format, Solana integration) remain pending.
