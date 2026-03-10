@@ -5,6 +5,8 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.7";
 import * as kv from "./kv_store.ts";
 import { crypto } from "jsr:@std/crypto@1.0.3";
 import * as secp256k1 from "https://esm.sh/@noble/curves@1.4.0/secp256k1";
+import { buildTree, generateProof, verifyProof, sha256Hex } from "./lib/merkle.ts";
+import type { MerkleTree } from "./lib/merkle.ts";
 
 const app = new Hono();
 
@@ -43,24 +45,15 @@ app.options("*", (c) => {
 // Helper to generate IDs
 const generateId = () => crypto.randomUUID();
 
-// Helper to calculate Merkle root from readings
-const calculateMerkleRoot = async (readings: any[]) => {
-  if (readings.length === 0) {
-    return crypto.randomUUID().replace(/-/g, '');
-  }
-  
-  // Sort readings by timestamp
-  const sortedReadings = [...readings].sort((a, b) => 
-    new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
-  );
-  
-  // Concatenate all hashes
-  const combined = sortedReadings.map(r => r.hash || '').join('');
-  
-  // Hash the combined string to create Merkle root
-  const hashBuffer = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(combined));
-  const hashArray = Array.from(new Uint8Array(hashBuffer));
-  return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+// Helper to build a Merkle tree from readings (sorted by timestamp, then id)
+const buildMerkleTreeFromReadings = async (readings: any[]): Promise<MerkleTree> => {
+  const sorted = [...readings].sort((a, b) => {
+    const dt = new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime();
+    if (dt !== 0) return dt;
+    return (a.id || '').localeCompare(b.id || '');
+  });
+  const hashes = sorted.map((r: any) => r.hash || '');
+  return buildTree(hashes);
 };
 
 // Helper to generate mock readings for a sensor
@@ -337,16 +330,16 @@ app.get("/server/sensors/:id", async (c) => {
     const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
     const readings = await kv.getByPrefix(`reading:${id}:`);
     const lastHourReadings = readings.filter((r: any) => new Date(r.timestamp) >= oneHourAgo);
-    const hourlyMerkleRoot = await calculateMerkleRoot(lastHourReadings);
+    const tree = await buildMerkleTreeFromReadings(lastHourReadings);
 
     // Calculate total verified (sum of dataset accesses + sensor views)
     const datasets = await kv.getByPrefix(`dataset:${id}:`);
     const totalVerified = datasets.reduce((sum: number, d: any) => sum + (d.accessCount || 0), 0) + 1;
 
-    return c.json({ 
+    return c.json({
       sensor: {
         ...sensor,
-        hourlyMerkleRoot,
+        hourlyMerkleRoot: tree.root,
         totalVerified,
         totalReadings: readings.length
       }
@@ -369,10 +362,12 @@ app.get("/server/sensors/:id/hourly-merkle", async (c) => {
     const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
     const readings = await kv.getByPrefix(`reading:${id}:`);
     const lastHourReadings = readings.filter((r: any) => new Date(r.timestamp) >= oneHourAgo);
-    const merkleRoot = await calculateMerkleRoot(lastHourReadings);
+    const tree = await buildMerkleTreeFromReadings(lastHourReadings);
 
-    return c.json({ 
-      merkleRoot,
+    return c.json({
+      merkleRoot: tree.root,
+      leafCount: tree.leafCount,
+      leaves: tree.leaves,
       readingsCount: lastHourReadings.length,
       timestamp: new Date().toISOString()
     });
@@ -754,7 +749,8 @@ app.post("/server/datasets/:id/anchor", async (c) => {
       return timestamp >= start && timestamp <= end;
     });
 
-    const merkleRoot = await calculateMerkleRoot(readingsInRange);
+    const tree = await buildMerkleTreeFromReadings(readingsInRange);
+    const merkleRoot = tree.root;
     const transactionId = generateId().replace(/-/g, '');
 
     dataset.status = 'anchoring';
@@ -884,24 +880,31 @@ app.post("/server/verify/merkle", async (c) => {
       return c.json({ error: 'Unauthorized' }, 401);
     }
 
-    const { sensorId, merkleRoot } = await c.req.json();
-    
-    // Calculate current hourly Merkle root
+    const body = await c.req.json();
+
+    // Mode 1: Inclusion proof verification (leafHash + proof + merkleRoot)
+    if (body.leafHash && body.proof && body.merkleRoot) {
+      const verified = await verifyProof(body.leafHash, body.proof, body.merkleRoot);
+      return c.json({ verified, mode: 'inclusion-proof' });
+    }
+
+    // Mode 2: Full tree verification (sensorId + merkleRoot)
+    const { sensorId, merkleRoot } = body;
     const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
     const readings = await kv.getByPrefix(`reading:${sensorId}:`);
     const lastHourReadings = readings.filter((r: any) => new Date(r.timestamp) >= oneHourAgo);
-    const currentMerkleRoot = await calculateMerkleRoot(lastHourReadings);
+    const tree = await buildMerkleTreeFromReadings(lastHourReadings);
 
-    if (currentMerkleRoot === merkleRoot) {
-      return c.json({ 
-        verified: true, 
+    if (tree.root === merkleRoot) {
+      return c.json({
+        verified: true,
         readingsCount: lastHourReadings.length,
         message: `Merkle root verified for ${lastHourReadings.length} readings from the last hour`
       });
     } else {
-      return c.json({ 
-        verified: false, 
-        expected: currentMerkleRoot,
+      return c.json({
+        verified: false,
+        expected: tree.root,
         received: merkleRoot,
         message: 'Merkle root does not match'
       });
@@ -909,6 +912,72 @@ app.post("/server/verify/merkle", async (c) => {
   } catch (error) {
     console.error('Failed to verify Merkle root:', error);
     return c.json({ error: 'Failed to verify Merkle root' }, 500);
+  }
+});
+
+// Get Merkle inclusion proof for a specific reading (authenticated)
+app.get("/server/sensors/:id/merkle-proof/:leafIndex", async (c) => {
+  try {
+    const user = await getUserFromToken(c.req.raw);
+    if (!user) {
+      return c.json({ error: 'Unauthorized' }, 401);
+    }
+
+    const id = c.req.param('id');
+    const leafIndex = parseInt(c.req.param('leafIndex'), 10);
+    if (isNaN(leafIndex) || leafIndex < 0) {
+      return c.json({ error: 'Invalid leaf index' }, 400);
+    }
+
+    const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
+    const readings = await kv.getByPrefix(`reading:${id}:`);
+    const lastHourReadings = readings.filter((r: any) => new Date(r.timestamp) >= oneHourAgo);
+    const tree = await buildMerkleTreeFromReadings(lastHourReadings);
+
+    if (leafIndex >= tree.leafCount) {
+      return c.json({ error: `Leaf index ${leafIndex} out of range [0, ${tree.leafCount})` }, 400);
+    }
+
+    const proof = await generateProof(tree, leafIndex);
+    return c.json({ proof, merkleRoot: tree.root, leafCount: tree.leafCount });
+  } catch (error) {
+    console.error('Failed to generate Merkle proof:', error);
+    return c.json({ error: 'Failed to generate Merkle proof' }, 500);
+  }
+});
+
+// Get Merkle inclusion proof for a specific reading (public)
+app.get("/server/public/sensors/:sensorId/merkle-proof/:leafIndex", async (c) => {
+  try {
+    const sensorId = c.req.param('sensorId');
+    const leafIndex = parseInt(c.req.param('leafIndex'), 10);
+    if (isNaN(leafIndex) || leafIndex < 0) {
+      return c.json({ error: 'Invalid leaf index' }, 400);
+    }
+
+    const allSensors = await kv.getByPrefix('sensor:');
+    const sensor = allSensors.find((s: any) => s.id === sensorId);
+    if (!sensor) {
+      return c.json({ error: 'Sensor not found' }, 404);
+    }
+    if (sensor.visibility !== 'public') {
+      return c.json({ error: 'Sensor data is not public' }, 403);
+    }
+
+    const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
+    const readings = await kv.getByPrefix(`reading:${sensorId}:`);
+    const lastHourReadings = readings.filter((r: any) => new Date(r.timestamp) >= oneHourAgo);
+    const tree = await buildMerkleTreeFromReadings(lastHourReadings);
+
+    if (leafIndex >= tree.leafCount) {
+      return c.json({ error: `Leaf index ${leafIndex} out of range [0, ${tree.leafCount})` }, 400);
+    }
+
+    const proof = await generateProof(tree, leafIndex);
+    return c.json({ proof, merkleRoot: tree.root, leafCount: tree.leafCount });
+  } catch (error) {
+    console.error('Failed to generate public Merkle proof:', error);
+    return c.json({ error: 'Failed to generate public Merkle proof' }, 500);
   }
 });
 
@@ -1000,8 +1069,8 @@ app.get("/server/public/sensors/featured", async (c) => {
         // Calculate hourly Merkle root
         const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
         const lastHourReadings = readings.filter((r: any) => new Date(r.timestamp) >= oneHourAgo);
-        const hourlyMerkleRoot = await calculateMerkleRoot(lastHourReadings);
-        
+        const featuredTree = await buildMerkleTreeFromReadings(lastHourReadings);
+
         sensorsWithMetrics.push({
           id: sensor.id,
           name: sensor.name,
@@ -1012,7 +1081,7 @@ app.get("/server/public/sensors/featured", async (c) => {
           totalReadingsCount: readings.length,
           verifiedDatasetsCount: verifiedDatasets.length,
           totalVerified,
-          hourlyMerkleRoot,
+          hourlyMerkleRoot: featuredTree.root,
           lastActivity: sortedReadings[0]?.timestamp || sensor.createdAt,
         });
       }
@@ -1134,10 +1203,12 @@ app.get("/server/public/sensors/:sensorId/hourly-merkle", async (c) => {
     const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
     const readings = await kv.getByPrefix(`reading:${sensorId}:`);
     const lastHourReadings = readings.filter((r: any) => new Date(r.timestamp) >= oneHourAgo);
-    const merkleRoot = await calculateMerkleRoot(lastHourReadings);
+    const tree = await buildMerkleTreeFromReadings(lastHourReadings);
 
-    return c.json({ 
-      merkleRoot,
+    return c.json({
+      merkleRoot: tree.root,
+      leafCount: tree.leafCount,
+      leaves: tree.leaves,
       readingsCount: lastHourReadings.length,
       timestamp: new Date().toISOString()
     });
