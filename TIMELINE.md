@@ -90,8 +90,23 @@
 - `dashboard.tsx`: sparkline dos sensor cards agora diferencia mock (dados gerados localmente) vs real (polling da API a cada 15s). Adicionado polling global de sensores + stats a cada 30s como fallback para o Supabase Realtime.
 - `api.ts`: adicionado header `Cache-Control: no-cache, no-store` em todas as chamadas para evitar dados stale por cache do browser ou CDN.
 
+## Fase 6 — Fix CORS e Estabilidade da Edge Function (10 Mar 2026)
+**Contribuidor**: Vinicio Mendes (com assistência de IA — Claude)
+
+### Diagnóstico (10/03)
+- Homepage exibia erro "Unable to Load Featured Sensors — Edge Function not deployed" na seção Featured Public Sensors.
+- Investigação revelou que a Edge Function estava deployada e ativa (v8). Curl direto à API retornava HTTP 200 com dados corretos (1 sensor, 49 readings).
+- Causa raiz: o header `Cache-Control: no-cache, no-store` adicionado na Fase 5 (`api.ts`) não estava listado no `Access-Control-Allow-Headers` da configuração CORS da Edge Function. O browser bloqueava o request no preflight OPTIONS, gerando `TypeError: Failed to fetch` que o frontend interpretava como "Edge Function not deployed".
+
+### Decisão de design
+- Manter o `Cache-Control` no frontend (importante para evitar dados stale) e adicionar o header à whitelist CORS no servidor, em vez de remover do client. Desta forma, futuros headers custom também podem ser adicionados sem quebrar CORS.
+
+### Correção (10/03)
+- `supabase/functions/server/index.ts`: adicionado `Cache-Control` em 4 pontos de configuração CORS — middleware Hono `cors()`, handler explícito OPTIONS, e handler `Deno.serve` (preflight + response headers).
+- Redeploy da Edge Function `server` (v9).
+
 ## Estado Atual e Próximos Passos
 
-**Implementado**: Fluxo DePIN completo com autenticação criptográfica (secp256k1), identidade digital simulada (nftAddress), dashboard com dados em tempo real e polling automático para sensores reais, verificação de integridade via hashes e Merkle root, duas camadas de armazenamento (PostgreSQL para persistência, KV store para dashboard). Nova carteira Solana devnet sob controle do projeto (Phantom Wallet).
+**Implementado**: Fluxo DePIN completo com autenticação criptográfica (secp256k1), identidade digital simulada (nftAddress), dashboard com dados em tempo real e polling automático para sensores reais, verificação de integridade via hashes e Merkle root, duas camadas de armazenamento (PostgreSQL para persistência, KV store para dashboard). Nova carteira Solana devnet sob controle do projeto (Phantom Wallet). Homepage com Featured Public Sensors funcional e CORS estável.
 
 **Pendente**: Mint real de NFTs na Solana devnet para identidade on-chain dos dispositivos (código base existe em `solanaService.ts`, necessita adaptação para Deno), fix do cálculo do Merkle root, setup de estação permanente de sensoriamento (ESP8266 + DHT11 em Dell antigo ou alimentação USB contínua), e documentação para open source.

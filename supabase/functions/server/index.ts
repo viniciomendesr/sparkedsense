@@ -22,7 +22,7 @@ app.use(
   "*",
   cors({
     origin: "*",
-    allowHeaders: ["Content-Type", "Authorization", "apikey", "x-client-info"],
+    allowHeaders: ["Content-Type", "Authorization", "apikey", "x-client-info", "Cache-Control"],
     allowMethods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     exposeHeaders: ["Content-Length"],
     maxAge: 600,
@@ -35,7 +35,7 @@ app.options("*", (c) => {
   return c.text("", 204, {
     "Access-Control-Allow-Origin": "*",
     "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type, Authorization, apikey, x-client-info",
+    "Access-Control-Allow-Headers": "Content-Type, Authorization, apikey, x-client-info, Cache-Control",
     "Access-Control-Max-Age": "600",
   });
 });
@@ -1497,7 +1497,7 @@ Deno.serve(async (req) => {
       headers: {
         "Access-Control-Allow-Origin": "*",
         "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
-        "Access-Control-Allow-Headers": "Content-Type, Authorization, apikey, x-client-info",
+        "Access-Control-Allow-Headers": "Content-Type, Authorization, apikey, x-client-info, Cache-Control",
         "Access-Control-Max-Age": "86400",
       },
     });
@@ -1510,7 +1510,7 @@ Deno.serve(async (req) => {
   const headers = new Headers(response.headers);
   headers.set("Access-Control-Allow-Origin", "*");
   headers.set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
-  headers.set("Access-Control-Allow-Headers", "Content-Type, Authorization, apikey, x-client-info");
+  headers.set("Access-Control-Allow-Headers", "Content-Type, Authorization, apikey, x-client-info, Cache-Control");
   
   return new Response(response.body, {
     status: response.status,
