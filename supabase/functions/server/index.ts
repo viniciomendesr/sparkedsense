@@ -327,19 +327,31 @@ app.get("/server/sensors/:id", async (c) => {
     }
 
     // Calculate hourly Merkle root
-    const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
     const readings = await kv.getByPrefix(`reading:${id}:`);
-    const lastHourReadings = readings.filter((r: any) => new Date(r.timestamp) >= oneHourAgo);
-    const tree = await buildMerkleTreeFromReadings(lastHourReadings);
+    let hourlyMerkleRoot = null;
+    let totalVerified = 0;
 
-    // Calculate total verified (sum of dataset accesses + sensor views)
-    const datasets = await kv.getByPrefix(`dataset:${id}:`);
-    const totalVerified = datasets.reduce((sum: number, d: any) => sum + (d.accessCount || 0), 0) + 1;
+    try {
+      const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
+      const lastHourReadings = readings.filter((r: any) => new Date(r.timestamp) >= oneHourAgo);
+      const tree = await buildMerkleTreeFromReadings(lastHourReadings);
+      hourlyMerkleRoot = tree.root;
+    } catch (merkleError) {
+      console.error('Failed to compute Merkle root for sensor:', id, merkleError);
+    }
+
+    try {
+      // Calculate total verified (sum of dataset accesses + sensor views)
+      const datasets = await kv.getByPrefix(`dataset:${id}:`);
+      totalVerified = datasets.reduce((sum: number, d: any) => sum + (d.accessCount || 0), 0) + 1;
+    } catch (datasetError) {
+      console.error('Failed to compute datasets for sensor:', id, datasetError);
+    }
 
     return c.json({
       sensor: {
         ...sensor,
-        hourlyMerkleRoot: tree.root,
+        hourlyMerkleRoot,
         totalVerified,
         totalReadings: readings.length
       }
@@ -1067,9 +1079,15 @@ app.get("/server/public/sensors/featured", async (c) => {
         );
 
         // Calculate hourly Merkle root
-        const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
-        const lastHourReadings = readings.filter((r: any) => new Date(r.timestamp) >= oneHourAgo);
-        const featuredTree = await buildMerkleTreeFromReadings(lastHourReadings);
+        let hourlyMerkleRoot = null;
+        try {
+          const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
+          const lastHourReadings = readings.filter((r: any) => new Date(r.timestamp) >= oneHourAgo);
+          const featuredTree = await buildMerkleTreeFromReadings(lastHourReadings);
+          hourlyMerkleRoot = featuredTree.root;
+        } catch (merkleError) {
+          console.error('Failed to compute Merkle root for featured sensor:', sensor.id, merkleError);
+        }
 
         sensorsWithMetrics.push({
           id: sensor.id,
@@ -1081,7 +1099,7 @@ app.get("/server/public/sensors/featured", async (c) => {
           totalReadingsCount: readings.length,
           verifiedDatasetsCount: verifiedDatasets.length,
           totalVerified,
-          hourlyMerkleRoot: featuredTree.root,
+          hourlyMerkleRoot,
           lastActivity: sortedReadings[0]?.timestamp || sensor.createdAt,
         });
       }
