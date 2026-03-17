@@ -184,6 +184,24 @@ Format inspired by [Keep a Changelog](https://keepachangelog.com/).
 
 ---
 
+## Phase 9 — Bug fixes and KV store pagination (16 Mar 2026)
+
+**Contributor:** Vinicio Mendes (with AI assistance — Claude)
+
+### Fixed (frontend)
+- SVG sparkline rendering error (`<polyline> attribute points: Expected number`): replaced percentage-based coordinates (`"0%,100%"`) with numeric values and `viewBox="0 0 100 100"`; added `vectorEffect="non-scaling-stroke"` for consistent stroke width
+- Division-by-zero guard: sparkline now requires `liveData.length > 1` (was `> 0`), preventing `NaN` when only one data point exists
+
+### Fixed (backend — Edge Function)
+- `GET /sensors/:id` returning 500: Merkle tree computation and dataset aggregation wrapped in individual try-catch blocks so a failure in either no longer crashes the entire endpoint (returns `hourlyMerkleRoot: null` gracefully)
+- Same defensive handling applied to `GET /public/sensors/featured`
+- **KV store 1000-row ceiling:** `getByPrefix()` was hitting Supabase JS client's default 1000-row limit, silently truncating readings, stats, and Merkle trees. Replaced single query with paginated `.range()` loop in 1000-row pages until all rows are fetched
+
+### Removed
+- Stale git worktrees (`fervent-shamir`, `recursing-curran`) — cleaned up after verifying no pending changes
+
+---
+
 ## Current status
 
 **Implemented:** End-to-end DePIN flow with secp256k1 cryptographic authentication, simulated digital identity (nftAddress), real-time dashboard with automatic polling for real sensors, binary Merkle tree with inclusion proofs for dataset integrity verification (client-side and server-side), dual-layer storage (PostgreSQL + KV store), Solana devnet wallet under project control, homepage with Featured Public Sensors. Structured documentation with ADR index and timeline in `docs/`.
