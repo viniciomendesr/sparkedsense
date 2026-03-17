@@ -1667,7 +1667,8 @@ app.post("/server/sensor-data", async (c) => {
 });
 
 // POST /server/device-location (no user JWT required)
-// ESP sends WiFi AP scan results, backend resolves to lat/lng via Mylnikov API (ADR-009)
+// ESP sends WiFi AP scan results, backend resolves to lat/lng via Apple WiFi DB (Cloudflare Worker)
+// See ADR-009 for architecture details
 app.post("/server/device-location", async (c) => {
   try {
     const body = await c.req.json();
@@ -1703,75 +1704,97 @@ app.post("/server/device-location", async (c) => {
       }
     }
 
-    // Query Mylnikov API for each BSSID and compute RSSI-weighted centroid
-    const resolvedAPs: Array<{ lat: number; lon: number; range: number; rssi: number }> = [];
-
-    for (const ap of wifiAccessPoints) {
-      try {
-        const bssid = (ap.macAddress as string).toUpperCase();
-        const mylnikovRes = await fetch(
-          `https://api.mylnikov.org/geolocation/wifi?v=1.2&bssid=${encodeURIComponent(bssid)}`
-        );
-        if (mylnikovRes.ok) {
-          const mylnikovData = await mylnikovRes.json();
-          if (mylnikovData.result === 200 && mylnikovData.data) {
-            resolvedAPs.push({
-              lat: mylnikovData.data.lat,
-              lon: mylnikovData.data.lon,
-              range: mylnikovData.data.range ?? 100,
-              rssi: ap.signalStrength ?? -70,
-            });
-          }
-        }
-      } catch (apErr: any) {
-        console.error(`Mylnikov lookup failed for ${ap.macAddress}:`, apErr.message);
-      }
+    // Query Apple WiFi DB via Cloudflare Worker (single batch request)
+    const geoWorkerUrl = Deno.env.get('GEOLOCATE_WORKER_URL');
+    if (!geoWorkerUrl) {
+      console.error('GEOLOCATE_WORKER_URL not configured');
+      return c.json({ error: 'Geolocation service not configured' }, 503);
     }
 
-    if (resolvedAPs.length === 0) {
+    const workerPayload = {
+      accessPoints: wifiAccessPoints.map((ap: any) => ({
+        bssid: ap.macAddress,
+        signal: ap.signalStrength ?? null,
+      })),
+      all: false,
+      reverseGeocode: true,
+    };
+
+    const workerRes = await fetch(geoWorkerUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(workerPayload),
+    });
+
+    if (!workerRes.ok) {
+      const errBody = await workerRes.text();
+      console.error('Geolocate worker error:', workerRes.status, errBody);
+      return c.json({ error: 'Geolocation service error' }, 502);
+    }
+
+    const geoData = await workerRes.json();
+
+    if (!geoData.found) {
+      // Try IP-based fallback from worker response
+      if (geoData.fallback) {
+        const fb = geoData.fallback;
+        const locationText = [fb.city, fb.region, fb.country].filter(Boolean).join(', ') ||
+          `${fb.latitude.toFixed(4)}, ${fb.longitude.toFixed(4)}`;
+
+        const { error: updateError } = await supabase
+          .from('devices')
+          .update({ location: locationText, latitude: fb.latitude, longitude: fb.longitude, location_accuracy: 10000 })
+          .eq('nft_address', nftAddress);
+
+        if (updateError) {
+          console.error('Device location update error:', updateError);
+          return c.json({ error: 'DB error: ' + updateError.message }, 500);
+        }
+
+        console.log(`📍 Location (IP fallback): ${nftAddress.substring(0, 16)}... → ${locationText}`);
+        return c.json({ success: true, location: locationText, latitude: fb.latitude, longitude: fb.longitude, accuracy: 10000, source: 'ip-fallback' });
+      }
       return c.json({ error: 'Could not determine location from WiFi data' }, 422);
     }
 
-    // Compute RSSI-weighted centroid: weight = 10^(RSSI_dBm / 10)
-    let weightSum = 0;
-    let latSum = 0;
-    let lonSum = 0;
-    let rangeSum = 0;
+    // Extract location: prefer triangulated (weighted centroid), fall back to first result
+    let latitude: number;
+    let longitude: number;
+    let locationText: string;
 
-    for (const ap of resolvedAPs) {
-      const weight = Math.pow(10, ap.rssi / 10);
-      latSum += ap.lat * weight;
-      lonSum += ap.lon * weight;
-      rangeSum += ap.range;
-      weightSum += weight;
-    }
-
-    const latitude = latSum / weightSum;
-    const longitude = lonSum / weightSum;
-    const accuracy = Math.round(rangeSum / resolvedAPs.length);
-
-    // Reverse geocode via Nominatim
-    let locationText = `${latitude.toFixed(4)}, ${longitude.toFixed(4)}`;
-    try {
-      const reverseGeoResponse = await fetch(
-        `https://nominatim.openstreetmap.org/reverse?lat=${latitude}&lon=${longitude}&format=json&zoom=10`,
-        { headers: { 'User-Agent': 'SparkedSense/1.0' } }
-      );
-      if (reverseGeoResponse.ok) {
-        const reverseData = await reverseGeoResponse.json();
-        const addr = reverseData.address;
-        if (addr) {
-          const parts = [
-            addr.city || addr.town || addr.village || addr.municipality,
-            addr.state,
-            addr.country,
-          ].filter(Boolean);
-          if (parts.length > 0) locationText = parts.join(', ');
-        }
+    if (geoData.triangulated) {
+      latitude = geoData.triangulated.latitude;
+      longitude = geoData.triangulated.longitude;
+      // Use triangulated address if available
+      const addr = geoData.triangulated.address;
+      if (addr?.address) {
+        const parts = [
+          addr.address.city || addr.address.town || addr.address.village || addr.address.municipality,
+          addr.address.state,
+          addr.address.country,
+        ].filter(Boolean);
+        locationText = parts.length > 0 ? parts.join(', ') : addr.displayName || `${latitude.toFixed(4)}, ${longitude.toFixed(4)}`;
+      } else {
+        locationText = `${latitude.toFixed(4)}, ${longitude.toFixed(4)}`;
       }
-    } catch (reverseErr: any) {
-      console.error('Reverse geocoding error (non-fatal):', reverseErr.message);
+    } else {
+      // Use first result
+      const first = geoData.results[0];
+      latitude = first.latitude;
+      longitude = first.longitude;
+      if (first.address?.address) {
+        const parts = [
+          first.address.address.city || first.address.address.town || first.address.address.village || first.address.address.municipality,
+          first.address.address.state,
+          first.address.address.country,
+        ].filter(Boolean);
+        locationText = parts.length > 0 ? parts.join(', ') : first.address.displayName || `${latitude.toFixed(4)}, ${longitude.toFixed(4)}`;
+      } else {
+        locationText = `${latitude.toFixed(4)}, ${longitude.toFixed(4)}`;
+      }
     }
+
+    const accuracy = geoData.triangulated ? Math.round(50 / geoData.triangulated.pointsUsed) : 100;
 
     // Update device in database
     const { error: updateError } = await supabase
