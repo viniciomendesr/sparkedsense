@@ -330,6 +330,19 @@ export function PublicSensorDetailPage({
                     </p>
                   </div>
                 )}
+                {readings.length > 0 && (
+                  <div>
+                    <div className="flex items-center gap-1.5 mb-1">
+                      <Database className="w-3 h-3 text-muted-foreground" />
+                      <span className="text-xs" style={{ color: 'var(--text-muted)' }}>
+                        Data Processed
+                      </span>
+                    </div>
+                    <p className="text-sm" style={{ fontWeight: 500, color: 'var(--text-primary)' }}>
+                      {(datasets.reduce((sum, d) => sum + (d.readingsCount || 0), 0) + readings.length).toLocaleString()} readings
+                    </p>
+                  </div>
+                )}
               </div>
             </div>
           </div>

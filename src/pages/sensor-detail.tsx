@@ -448,6 +448,14 @@ export function SensorDetailPage({
                 </span>
               </div>
             )}
+            {readings.length > 0 && (
+              <div className="flex items-center gap-1.5 mb-3">
+                <Database className="w-4 h-4 text-muted-foreground shrink-0" />
+                <span className="text-sm" style={{ color: 'var(--text-secondary)' }}>
+                  {(datasets.reduce((sum, d) => sum + (d.readingsCount || 0), 0) + readings.length).toLocaleString()} readings processed
+                </span>
+              </div>
+            )}
             <div className="flex items-center gap-2 mb-3">
               <Badge variant="outline" className="border-border">
                 <div className="flex items-center gap-1.5">

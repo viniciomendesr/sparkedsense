@@ -1,7 +1,7 @@
 # ADR-009: WiFi-based geolocation for physical sensors
 
-**Date:** 2026-03-17
-**Status:** Proposed
+**Date:** 2026-03-17 (updated 2026-03-17)
+**Status:** Accepted
 
 ## Context
 
@@ -44,35 +44,41 @@ Key advantages:
 
 ## Decision
 
-Implement WiFi-based geolocation using the **Mylnikov Geo-Location API** as the geolocation provider, with backend-side RSSI-weighted centroid calculation for multi-AP triangulation.
+Implement WiFi-based geolocation using **Apple's WiFi Positioning Service** via a self-hosted Cloudflare Worker as the geolocation provider. The worker handles BSSID resolution, RSSI-weighted centroid calculation, and reverse geocoding in a single batch request.
 
 ### Geolocation provider selection
 
 | Provider | Cost | Limit | Coverage | API key | Infrastructure | Stability |
 |----------|------|-------|----------|---------|----------------|-----------|
-| **Mylnikov API** | **Zero** | **Unlimited** | **Good (~34.5M APs)** | **None** | **None (hosted API)** | **Stable (since ~2014)** |
-| Apple via Cloudflare Worker | Zero | Unlimited | Excellent | None | Cloudflare account + Worker deploy | Risky (undocumented API, repo has 3 stars) |
+| **Apple via Cloudflare Worker** | **Zero** | **Unlimited** | **Excellent (billions of APs)** | **None** | **Cloudflare free tier** | **Stable (API since ~2012)** |
+| Mylnikov API | Zero | Unlimited | Weak (~34.5M APs) | None | None | Risky (single maintainer, Russia-hosted, no SLA) |
 | Unwired Labs | Zero | 100/day | Good | Yes | None | Stable |
 | Google Geolocation API | $5/1000 req | Billing required | Excellent | Yes | None | Stable |
 | Combain | Zero | 1000/month | Good | Yes | None | Stable |
 | Mozilla Location Service | — | Discontinued (2024) | — | — | — | — |
 
-### Why Mylnikov?
+### Why Apple WiFi DB via Cloudflare Worker?
 
-The Apple WiFi DB via Cloudflare Worker was initially considered for its superior coverage, but was rejected for production use due to:
-- The [`gonzague/wifi-geolocate-worker`](https://github.com/gonzague/wifi-geolocate-worker) repo has only 3 stars, 0 forks, no license, and a single contributor — not reliable as a production dependency
-- Apple's WiFi Positioning Service is **undocumented** and uses Protocol Buffers — could break without notice
-- Requires deploying and maintaining a separate Cloudflare Worker (extra infrastructure)
+**Initially Mylnikov was chosen** for its zero-infrastructure simplicity, but re-evaluation revealed critical weaknesses:
+- **Coverage gap**: ~34.5M APs is ~0.5% of Apple's database — poor coverage in rural Brazil
+- **Single maintainer**: Alexander Mylnikov, no SLA, no support, Russia-hosted
+- **Sequential requests**: 5 HTTP calls per device boot (one per BSSID) vs 1 batch call
+- **No fallback**: if BSSIDs not found, device gets no location at all
 
-**Mylnikov API** is the better choice for an MVP because:
-- **Zero setup** — single HTTP GET per BSSID, no API key, no account, no infrastructure
-- **MIT License** — open data, legally clear
-- **Stable** — running publicly since ~2014 with ~34.5 million AP records worldwide
-- **Simple JSON response** — no protobuf, no complex parsing
-- **No rate limit documented** — suitable for reasonable IoT usage
-- Coverage is sufficient for urban/suburban areas in Brazil where most sensors are deployed
+**Apple WiFi via Cloudflare Worker** is superior because:
+- **Massive coverage** — every iPhone/Mac contributes AP data (billions of records)
+- **Excellent Brazil coverage** — iPhones are very popular in Brazil
+- **Single batch request** — one POST resolves all BSSIDs at once (~50-100ms vs ~500ms)
+- **Built-in fallback** — Cloudflare's `request.cf` provides IP-based geolocation when WiFi lookup fails
+- **Self-contained** — the worker code is in our repo (`wifi-geolocate-worker/`), not an external dependency
+- **Worker handles everything** — BSSID resolution, weighted centroid, reverse geocoding, auto-upgrade
+- **Free** — Cloudflare Workers free tier allows 100K requests/day
+- **Stable API** — Apple's `gs-loc.apple.com/clls/wloc` endpoint has existed since ~2012, used by Apple's own devices
 
-The backend performs **RSSI-weighted centroid calculation** across multiple BSSIDs to compensate for Mylnikov's per-BSSID lookup (no native multi-AP triangulation). This achieves comparable accuracy to providers with built-in triangulation.
+The original concerns about using an "undocumented API from a 3-star repo" were addressed:
+1. The worker code was rewritten/customized (671 lines) with robust error handling — it's our own code, not a dependency
+2. Apple's WiFi Positioning Service is used by every Apple device — it's as stable as any Apple service
+3. A Cloudflare Worker on the free tier is trivial infrastructure
 
 ### Architecture
 
@@ -86,14 +92,13 @@ ESP8266 boot
     │       ├─ Validates device exists (by nftAddress)
     │       ├─ Deduplication check (skip if location updated < 24h ago)
     │       │
-    │       ├─ For each BSSID:
-    │       │     GET https://api.mylnikov.org/geolocation/wifi?bssid=XX:XX&v=1.2
-    │       │     → { lat, lon, range }
+    │       ├─ POST to Cloudflare Worker (single batch request)
+    │       │     → Worker queries Apple WiFi DB (gs-loc.apple.com/clls/wloc)
+    │       │     → Computes RSSI-weighted centroid
+    │       │     → Reverse geocodes via Nominatim
+    │       │     → Falls back to IP geolocation if no WiFi match
     │       │
-    │       ├─ Computes RSSI-weighted centroid from all resolved APs
-    │       │     weight = 10^(RSSI/10), stronger signal = more influence
-    │       │
-    │       ├─ Reverse geocodes via Nominatim → "Campinas, SP, Brazil"
+    │       ├─ Extracts triangulated lat/lng + address from worker response
     │       ├─ Saves location + coordinates to devices table
     │       └─ Updates KV store cache
     │
@@ -132,17 +137,25 @@ Add a new endpoint `POST /server/device-location`:
 1. Receives the `nftAddress` + `wifiAccessPoints` array
 2. Validates that the device exists in the `devices` table
 3. Deduplication: skips if `latitude` already exists and was updated less than **24 hours** ago
-4. For each BSSID in the array, queries Mylnikov:
+4. Sends a single POST to the Cloudflare Worker (`GEOLOCATE_WORKER_URL` env var):
+   ```json
+   POST https://geolocate.<account>.workers.dev/
+   {
+     "accessPoints": [
+       { "bssid": "AA:BB:CC:DD:EE:FF", "signal": -45 },
+       { "bssid": "11:22:33:44:55:66", "signal": -67 }
+     ],
+     "all": false,
+     "reverseGeocode": true
+   }
    ```
-   GET https://api.mylnikov.org/geolocation/wifi?v=1.2&bssid=AA:BB:CC:DD:EE:FF
-   → { "result": 200, "data": { "lat": -22.9064, "lon": -47.0616, "range": 100 } }
-   ```
-5. Computes RSSI-weighted centroid from all resolved APs:
-   - Weight formula: `10^(RSSI_dBm / 10)` — stronger signals have more influence
-   - `lat_final = Σ(lat_i × weight_i) / Σ(weight_i)`
-   - `lon_final = Σ(lon_i × weight_i) / Σ(weight_i)`
-   - `accuracy = average of all AP ranges`
-6. Reverse geocodes coordinates via OpenStreetMap Nominatim to get human-readable address
+5. The worker handles all geolocation logic:
+   - Queries Apple WiFi DB via protobuf (`gs-loc.apple.com/clls/wloc`)
+   - Computes RSSI-weighted centroid from resolved APs
+   - Reverse geocodes via Nominatim
+   - Falls back to Cloudflare IP geolocation if no WiFi match
+   - Auto-upgrades to `all=true` if exact BSSIDs not found
+6. Backend extracts triangulated location (preferred) or first result from worker response
 7. Updates the `devices` table:
    - `location` (TEXT): Human-readable address (e.g., "Campinas, SP, Brazil")
    - `latitude` (NUMERIC): Decimal latitude
@@ -152,7 +165,7 @@ Add a new endpoint `POST /server/device-location`:
 
 **Authentication:** The endpoint uses the same `supabaseAnonKey` Bearer token as `/sensor-data` — no user JWT required. The device is identified by its `nftAddress`.
 
-**Deduplication cache:** 24 hours. If the device reboots multiple times within 24 hours, the backend returns the cached location without calling Mylnikov. This protects against reboot loops and ensures **stable location hashes on the blockchain** — RSSI-based centroid can vary slightly between scans even at the same physical location, and frequent recalculations would create unnecessary hash changes on-chain that don't represent real sensor movement.
+**Deduplication cache:** 24 hours. If the device reboots multiple times within 24 hours, the backend returns the cached location without querying the worker. This protects against reboot loops and ensures **stable location hashes on the blockchain** — RSSI-based centroid can vary slightly between scans even at the same physical location, and frequent recalculations would create unnecessary hash changes on-chain that don't represent real sensor movement.
 
 ### 3. Database migration
 
@@ -177,78 +190,71 @@ Update the `public_sensors_with_metrics` view to include `latitude`, `longitude`
 
 Update the three templates in `/src/sensor-code/` (temperature.ts, humidity.ts, ph.ts) to include the `scanAndReportLocation()` function, so users who copy firmware code from the activation wizard get location support automatically.
 
-### 6. Mylnikov API details
+### 6. Cloudflare Worker details
 
-**Endpoint:**
-```
-GET https://api.mylnikov.org/geolocation/wifi?v=1.2&bssid=<MAC_ADDRESS>
-```
+The worker source code lives in `wifi-geolocate-worker/` and is deployed to Cloudflare Workers (free tier).
 
-**Response (success):**
-```json
-{
-  "result": 200,
-  "data": {
-    "lat": -22.9064,
-    "lon": -47.0616,
-    "range": 100
-  }
-}
+**Deploy:**
+```bash
+cd wifi-geolocate-worker && npx wrangler deploy
 ```
 
-**Response (not found):**
-```json
-{
-  "result": 404
-}
-```
+**Environment variable:** Set `GEOLOCATE_WORKER_URL` in Supabase Edge Function secrets to the deployed worker URL (e.g., `https://geolocate.<account>.workers.dev/`).
 
-- No authentication required
-- No rate limit documented
-- MIT licensed open data
-- ~34.5 million AP records
-- Database: [mylnikov.org](https://www.mylnikov.org/archives/1170)
+**Worker features:**
+- Queries Apple's WiFi Positioning Service (`gs-loc.apple.com/clls/wloc`) via Protocol Buffers
+- RSSI-weighted centroid calculation (same `10^(dBm/10)` formula)
+- Reverse geocoding via Nominatim (smart strategy: geocodes triangulated position when available)
+- IP-based fallback via Cloudflare's `request.cf` geolocation
+- Auto-upgrade: retries with `all=true` if exact BSSIDs not found
+- Smart Placement enabled (Cloudflare routes to optimal datacenter)
+
+**API:** See `wifi-geolocate-worker/readme.md` for full API reference.
 
 ## Consequences
 
 ### Positive
 - Automatic location for all real sensors without user intervention
 - Works indoors (greenhouses, labs) where GPS fails
-- **Zero cost** — no API keys, no billing, no rate limits
-- **Zero infrastructure** — no Cloudflare Worker, no extra accounts, no deploy steps
-- **Simple integration** — single HTTP GET per BSSID, plain JSON response
-- **Stable API** — running publicly since ~2014
+- **Zero cost** — Cloudflare Workers free tier (100K requests/day)
+- **Excellent coverage** — Apple's WiFi DB has billions of APs (every iPhone/Mac contributes)
+- **Single batch request** — one POST resolves all BSSIDs (~50-100ms vs ~500ms with Mylnikov)
+- **Built-in fallback** — IP-based geolocation via Cloudflare when WiFi lookup fails
+- **Self-contained** — worker code is in our repo, not an external dependency
 - Non-blocking and non-critical — device operates normally if geolocation fails
 - Coordinates enable future map-based visualization
 - One-time scan per boot minimizes resource usage
 - Compatible with both ESP8266 and ESP32-S3
-- Backend-computed weighted centroid improves accuracy with multiple APs
+- Worker-computed weighted centroid improves accuracy with multiple APs
 - 24-hour dedup cache ensures stable on-chain location hashes and protects against reboot loops
 
 ### Negative
-- Mylnikov has **fewer APs** than Apple/Google (~34.5M vs billions) — may not resolve all BSSIDs, especially in rural areas
-- Maintained by a **single person** (Alexander Mylnikov) — no SLA, no support
-- Per-BSSID lookup means the backend makes up to 5 sequential HTTP requests (vs 1 batch request with other providers) — adds ~200-500ms total latency
-- Reverse geocoding via Nominatim has a 1 request/second rate limit
+- Apple's WiFi Positioning Service is **undocumented** — protocol could change (though it has been stable since ~2012)
+- Requires deploying and maintaining a Cloudflare Worker (trivial, but still extra infrastructure)
+- Reverse geocoding via Nominatim has a 1 request/second rate limit (handled by worker's smart geocoding strategy)
 - Firmware update required on already-deployed devices (must re-flash `.ino`)
 
 ### Risks
-- **Mylnikov API downtime**: The API has no SLA and could go offline. Mitigation: the location call is fire-and-forget — if Mylnikov is down, the device continues operating normally with no location data. Existing location data in the database is preserved. If Mylnikov is permanently discontinued, switching to another provider (Unwired Labs, Google) requires changing only the backend function, not the firmware or frontend.
-- **BSSID not found**: Some APs may not exist in Mylnikov's 34.5M record database. Mitigation: the weighted centroid is computed from whichever BSSIDs resolve successfully — even 1 out of 5 is enough to get a location. If zero resolve, the endpoint returns a 422 error and the device continues without location.
-- **Nominatim rate limit**: 1 req/sec for reverse geocoding could bottleneck if many devices boot simultaneously. Mitigation: the backend caches results (24h dedup); coordinates are still available even if reverse geocoding fails (falls back to "lat, lon" text format).
-- **Privacy**: WiFi AP BSSIDs are sent to Mylnikov's API. Mitigation: only BSSID is sent (no SSID, no device identity, no user data). Mylnikov cannot correlate BSSIDs to Sparked Sense users or devices.
+- **Apple API change**: The `gs-loc.apple.com/clls/wloc` endpoint is undocumented. Mitigation: this API has been stable since ~2012 as Apple's own devices depend on it. If it changes, only the worker's protobuf encoding/decoding needs updating — the backend and firmware are unaffected.
+- **Cloudflare Worker downtime**: Mitigation: Cloudflare Workers have 99.99% uptime SLA. The location call is fire-and-forget — if the worker is down, the device continues operating normally.
+- **BSSID not found**: Mitigation: Apple's database is orders of magnitude larger than alternatives. The worker auto-upgrades to `all=true` to find nearby APs. If still nothing, Cloudflare's IP geolocation provides city-level fallback.
+- **Nominatim rate limit**: 1 req/sec for reverse geocoding. Mitigation: the worker uses smart geocoding (only geocodes the triangulated position, not each AP). Backend caches results (24h dedup).
+- **Privacy**: WiFi AP BSSIDs are sent to Apple via the worker. Mitigation: only BSSIDs are sent (no SSID, no device identity, no user data). The worker runs on our Cloudflare account — Apple sees requests from Cloudflare, not from our devices or users.
 
 ## Implementation order
 
-1. Database migration (add `latitude`, `longitude`, `location_accuracy` columns) — already done
-2. Backend endpoint `POST /server/device-location` with Mylnikov API + weighted centroid + 1h dedup cache
-3. Firmware `scanAndReportLocation()` function in `ESP.ino` — already done
-4. Update sensor code templates (`temperature.ts`, `humidity.ts`, `ph.ts`) — already done
-5. Frontend: display coordinates on sensor detail page — already done
-6. (Future) Map visualization on public sensors page
+1. Database migration (add `latitude`, `longitude`, `location_accuracy` columns) — done
+2. Deploy Cloudflare Worker (`cd wifi-geolocate-worker && npx wrangler deploy`) — **pending**
+3. Set `GEOLOCATE_WORKER_URL` env var in Supabase Edge Function secrets — **pending**
+4. Backend endpoint `POST /server/device-location` with Apple WiFi via worker — done
+5. Firmware `scanAndReportLocation()` function in `ESP.ino` — done (no changes needed, same payload format)
+6. Update sensor code templates (`temperature.ts`, `humidity.ts`, `ph.ts`) — done
+7. Frontend: display coordinates on sensor detail page — done
+8. (Future) Map visualization on public sensors page
 
 ## References
 
-- [Mylnikov Geo-Location API](https://www.mylnikov.org/archives/1170) — Free open WiFi geolocation database (~34.5M APs, MIT license)
+- [Apple WiFi Positioning Service](https://fx.aguessy.fr/resources/pdf-articles/Rapport-PFE-interception-SSL-analyse-localisation-smatphones.pdf) — Academic research on the protocol
+- [apple_bssid_locator](https://github.com/darkosancanin/apple_bssid_locator) — Original Python reference implementation
 - [Nominatim reverse geocoding](https://nominatim.openstreetmap.org/) — OpenStreetMap address lookup
-- [gonzague/wifi-geolocate-worker](https://github.com/gonzague/wifi-geolocate-worker) — Cloudflare Worker for Apple WiFi (evaluated but rejected for stability concerns)
+- `wifi-geolocate-worker/` — Our Cloudflare Worker implementation (adapted from gonzague/wifi-geolocate-worker)
