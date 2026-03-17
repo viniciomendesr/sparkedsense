@@ -77,15 +77,37 @@ export const mdel = async (keys: string[]): Promise<void> => {
 };
 
 // Search for key-value pairs by prefix.
+// Supabase default limit is 1000 rows — paginate to fetch all matches.
 export const getByPrefix = async (prefix: string): Promise<any[]> => {
   try {
     const supabase = client()
-    const { data, error } = await supabase.from("kv_store_4a89e1c9").select("key, value").like("key", prefix + "%");
-    if (error) {
-      console.error(`KV Store getByPrefix error for prefix "${prefix}":`, error.message);
-      throw new Error(error.message);
+    const PAGE_SIZE = 1000;
+    const allValues: any[] = [];
+    let offset = 0;
+
+    while (true) {
+      const { data, error } = await supabase
+        .from("kv_store_4a89e1c9")
+        .select("key, value")
+        .like("key", prefix + "%")
+        .range(offset, offset + PAGE_SIZE - 1);
+
+      if (error) {
+        console.error(`KV Store getByPrefix error for prefix "${prefix}":`, error.message);
+        throw new Error(error.message);
+      }
+
+      if (!data || data.length === 0) break;
+
+      for (const d of data) {
+        allValues.push(d.value);
+      }
+
+      if (data.length < PAGE_SIZE) break;
+      offset += PAGE_SIZE;
     }
-    return data?.map((d) => d.value) ?? [];
+
+    return allValues;
   } catch (error) {
     // Log the error but provide a more helpful message
     console.error(`KV Store getByPrefix failed for prefix "${prefix}":`, error);
