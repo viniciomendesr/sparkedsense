@@ -36,7 +36,8 @@ import {
   Trash2,
   Loader2,
   Settings,
-  Eye
+  Eye,
+  MapPin
 } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { useAuth } from '../lib/auth-context';
@@ -433,6 +434,20 @@ export function SensorDetailPage({
             <p className="mb-3" style={{ color: 'var(--text-secondary)' }}>
               {sensor.description}
             </p>
+            {sensor.location && (
+              <div className="flex items-center gap-1.5 mb-3">
+                <MapPin className="w-4 h-4 text-muted-foreground shrink-0" />
+                <span className="text-sm" style={{ color: 'var(--text-secondary)' }}>
+                  {sensor.location}
+                  {sensor.latitude != null && sensor.longitude != null && (
+                    <span className="text-xs ml-2" style={{ color: 'var(--text-muted)' }}>
+                      ({sensor.latitude.toFixed(4)}, {sensor.longitude.toFixed(4)}
+                      {sensor.locationAccuracy != null && ` ±${Math.round(sensor.locationAccuracy)}m`})
+                    </span>
+                  )}
+                </span>
+              </div>
+            )}
             <div className="flex items-center gap-2 mb-3">
               <Badge variant="outline" className="border-border">
                 <div className="flex items-center gap-1.5">

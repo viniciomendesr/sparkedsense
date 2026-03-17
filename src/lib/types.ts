@@ -10,6 +10,10 @@ export interface Sensor {
   claimToken?: string;
   walletPublicKey?: string;
   thumbnailUrl?: string;
+  location?: string;
+  latitude?: number;
+  longitude?: number;
+  locationAccuracy?: number;
   createdAt: Date;
   updatedAt?: Date;
   lastReading?: Reading;

@@ -56,6 +56,117 @@ const buildMerkleTreeFromReadings = async (readings: any[]): Promise<MerkleTree>
   return buildTree(hashes);
 };
 
+// Sensor type configs — single source of truth
+const sensorTypeConfigs: Record<string, { unit: string; variable: string; dataKey: string }> = {
+  temperature: { unit: '°C', variable: 'temperature', dataKey: 'temperature' },
+  humidity: { unit: '%', variable: 'humidity', dataKey: 'humidity' },
+  ph: { unit: 'pH', variable: 'ph_level', dataKey: 'ph_level' },
+  pressure: { unit: 'hPa', variable: 'pressure', dataKey: 'pressure' },
+  light: { unit: 'lux', variable: 'light_intensity', dataKey: 'light_intensity' },
+  co2: { unit: 'ppm', variable: 'co2_level', dataKey: 'co2_level' },
+};
+
+// Resolve sensorId → nft_address via sensor.claimToken → devices table
+const resolveNftAddress = async (sensorId: string, sensor: any): Promise<string | null> => {
+  if (!sensor?.claimToken) return null;
+  const { data: device } = await supabase
+    .from('devices')
+    .select('nft_address')
+    .eq('claim_token', sensor.claimToken)
+    .single();
+  return device?.nft_address || null;
+};
+
+// Map a PG sensor_readings row to the KV reading format expected by frontend
+const pgReadingToKvFormat = async (pgRow: any, sensorId: string, sensorType: string) => {
+  const config = sensorTypeConfigs[sensorType] || sensorTypeConfigs.temperature;
+  const value = pgRow.data?.[config.dataKey] ?? pgRow.data?.temperature ?? 0;
+  const timestamp = pgRow.timestamp;
+
+  // Compute hash to match KV format (deterministic)
+  const readingData = JSON.stringify({ sensorId, timestamp, value, unit: config.unit });
+  const hashBuf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(readingData));
+  const hash = Array.from(new Uint8Array(hashBuf)).map(b => b.toString(16).padStart(2, '0')).join('');
+
+  return {
+    id: pgRow.id,
+    sensorId,
+    timestamp,
+    variable: config.variable,
+    value,
+    unit: config.unit,
+    verified: true,
+    hash,
+    signature: '',
+  };
+};
+
+// Fetch readings — dispatches to PG for real sensors, KV for mock sensors
+const getSensorReadings = async (
+  sensorId: string,
+  sensor: any,
+  options?: { limit?: number; since?: Date; until?: Date }
+): Promise<any[]> => {
+  // Mock sensors: always read from KV (no nft_address)
+  if (sensor?.mode === 'mock') {
+    let readings = await kv.getByPrefix(`reading:${sensorId}:`);
+    if (options?.since) readings = readings.filter((r: any) => new Date(r.timestamp) >= options.since!);
+    if (options?.until) readings = readings.filter((r: any) => new Date(r.timestamp) <= options.until!);
+    readings.sort((a: any, b: any) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+    if (options?.limit) readings = readings.slice(0, options.limit);
+    return readings;
+  }
+
+  // Real sensors: resolve nft_address and query PG
+  const nftAddress = await resolveNftAddress(sensorId, sensor);
+  if (!nftAddress) {
+    // Fallback to KV if no device linked yet
+    let readings = await kv.getByPrefix(`reading:${sensorId}:`);
+    if (options?.since) readings = readings.filter((r: any) => new Date(r.timestamp) >= options.since!);
+    if (options?.until) readings = readings.filter((r: any) => new Date(r.timestamp) <= options.until!);
+    readings.sort((a: any, b: any) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+    if (options?.limit) readings = readings.slice(0, options.limit);
+    return readings;
+  }
+
+  // Query sensor_readings from PostgreSQL
+  let query = supabase
+    .from('sensor_readings')
+    .select('id, timestamp, data')
+    .eq('nft_address', nftAddress)
+    .order('timestamp', { ascending: false });
+
+  if (options?.since) query = query.gte('timestamp', options.since.toISOString());
+  if (options?.until) query = query.lte('timestamp', options.until.toISOString());
+  if (options?.limit) query = query.limit(options.limit);
+
+  const { data: rows, error } = await query;
+  if (error || !rows) return [];
+
+  // Map PG rows to KV format
+  const sensorType = sensor?.type || 'temperature';
+  return Promise.all(rows.map(r => pgReadingToKvFormat(r, sensorId, sensorType)));
+};
+
+// Count readings efficiently via PG (avoids fetching all rows)
+const countSensorReadings = async (sensorId: string, sensor: any): Promise<number> => {
+  if (sensor?.mode === 'mock') {
+    const readings = await kv.getByPrefix(`reading:${sensorId}:`);
+    return readings.length;
+  }
+  const nftAddress = await resolveNftAddress(sensorId, sensor);
+  if (!nftAddress) {
+    const readings = await kv.getByPrefix(`reading:${sensorId}:`);
+    return readings.length;
+  }
+  const { count, error } = await supabase
+    .from('sensor_readings')
+    .select('id', { count: 'exact', head: true })
+    .eq('nft_address', nftAddress);
+  if (error) return 0;
+  return count ?? 0;
+};
+
 // Helper to generate mock readings for a sensor
 const generateMockReading = async (sensor: any) => {
   const typeConfigs: Record<string, { min: number; max: number; unit: string; variable: string }> = {
@@ -327,7 +438,7 @@ app.get("/server/sensors/:id", async (c) => {
     }
 
     // Calculate hourly Merkle root
-    const readings = await kv.getByPrefix(`reading:${id}:`);
+    const readings = await getSensorReadings(id, sensor);
     let hourlyMerkleRoot = null;
     let totalVerified = 0;
 
@@ -372,8 +483,8 @@ app.get("/server/sensors/:id/hourly-merkle", async (c) => {
 
     const id = c.req.param('id');
     const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
-    const readings = await kv.getByPrefix(`reading:${id}:`);
-    const lastHourReadings = readings.filter((r: any) => new Date(r.timestamp) >= oneHourAgo);
+    const sensor = await kv.get(`sensor:${user.id}:${id}`);
+    const lastHourReadings = await getSensorReadings(id, sensor, { since: oneHourAgo });
     const tree = await buildMerkleTreeFromReadings(lastHourReadings);
 
     return c.json({
@@ -524,10 +635,8 @@ app.get("/server/readings/:sensorId", async (c) => {
     const sensorId = c.req.param('sensorId');
     const limit = parseInt(c.req.query('limit') || '100');
     
-    const readings = await kv.getByPrefix(`reading:${sensorId}:`);
-    const sortedReadings = (readings || [])
-      .sort((a: any, b: any) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
-      .slice(0, limit);
+    const sensor = await kv.get(`sensor:${user.id}:${sensorId}`);
+    const sortedReadings = await getSensorReadings(sensorId, sensor, { limit });
 
     return c.json({ readings: sortedReadings });
   } catch (error) {
@@ -547,11 +656,8 @@ app.get("/server/readings/:sensorId/historical", async (c) => {
     const start = new Date(c.req.query('start') || '');
     const end = new Date(c.req.query('end') || '');
     
-    const readings = await kv.getByPrefix(`reading:${sensorId}:`);
-    const filteredReadings = (readings || []).filter((r: any) => {
-      const timestamp = new Date(r.timestamp);
-      return timestamp >= start && timestamp <= end;
-    });
+    const sensor = await kv.get(`sensor:${user.id}:${sensorId}`);
+    const filteredReadings = await getSensorReadings(sensorId, sensor, { since: start, until: end });
 
     return c.json({ readings: filteredReadings });
   } catch (error) {
@@ -643,7 +749,9 @@ app.get("/server/datasets/detail/:id", async (c) => {
     }
 
     // Get preview readings from last hour within dataset period
-    const readings = await kv.getByPrefix(`reading:${dataset.sensorId}:`);
+    const allSensorsForDetail = await kv.getByPrefix('sensor:');
+    const dsensor = allSensorsForDetail.find((s: any) => s.id === dataset.sensorId);
+    const readings = await getSensorReadings(dataset.sensorId, dsensor);
     const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
     const datasetStart = new Date(dataset.startDate);
     const datasetEnd = new Date(dataset.endDate);
@@ -681,13 +789,10 @@ app.post("/server/datasets", async (c) => {
     const id = generateId();
 
     // Count readings in range
-    const readings = await kv.getByPrefix(`reading:${sensorId}:`);
+    const sensor = await kv.get(`sensor:${user.id}:${sensorId}`);
     const start = new Date(startDate);
     const end = new Date(endDate);
-    const readingsInRange = readings.filter((r: any) => {
-      const timestamp = new Date(r.timestamp);
-      return timestamp >= start && timestamp <= end;
-    });
+    const readingsInRange = await getSensorReadings(sensorId, sensor, { since: start, until: end });
 
     const dataset = {
       id,
@@ -753,13 +858,11 @@ app.post("/server/datasets/:id/anchor", async (c) => {
     }
 
     // Get readings in dataset range and calculate actual Merkle root
-    const readings = await kv.getByPrefix(`reading:${dataset.sensorId}:`);
+    const allSensorsForAnchor = await kv.getByPrefix('sensor:');
+    const anchorSensor = allSensorsForAnchor.find((s: any) => s.id === dataset.sensorId);
     const start = new Date(dataset.startDate);
     const end = new Date(dataset.endDate);
-    const readingsInRange = readings.filter((r: any) => {
-      const timestamp = new Date(r.timestamp);
-      return timestamp >= start && timestamp <= end;
-    });
+    const readingsInRange = await getSensorReadings(dataset.sensorId, anchorSensor, { since: start, until: end });
 
     const tree = await buildMerkleTreeFromReadings(readingsInRange);
     const merkleRoot = tree.root;
@@ -861,9 +964,9 @@ app.post("/server/verify/hash", async (c) => {
     const { sensorId, hash } = await c.req.json();
     
     // Search for the hash in recent readings
-    const readings = await kv.getByPrefix(`reading:${sensorId}:`);
+    const sensor = await kv.get(`sensor:${user.id}:${sensorId}`);
     const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
-    const recentReadings = readings.filter((r: any) => new Date(r.timestamp) >= oneHourAgo);
+    const recentReadings = await getSensorReadings(sensorId, sensor, { since: oneHourAgo });
     const found = recentReadings.find((r: any) => r.hash === hash);
 
     if (found) {
@@ -903,8 +1006,8 @@ app.post("/server/verify/merkle", async (c) => {
     // Mode 2: Full tree verification (sensorId + merkleRoot)
     const { sensorId, merkleRoot } = body;
     const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
-    const readings = await kv.getByPrefix(`reading:${sensorId}:`);
-    const lastHourReadings = readings.filter((r: any) => new Date(r.timestamp) >= oneHourAgo);
+    const verSensor = await kv.get(`sensor:${user.id}:${sensorId}`);
+    const lastHourReadings = await getSensorReadings(sensorId, verSensor, { since: oneHourAgo });
     const tree = await buildMerkleTreeFromReadings(lastHourReadings);
 
     if (tree.root === merkleRoot) {
@@ -942,8 +1045,8 @@ app.get("/server/sensors/:id/merkle-proof/:leafIndex", async (c) => {
     }
 
     const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
-    const readings = await kv.getByPrefix(`reading:${id}:`);
-    const lastHourReadings = readings.filter((r: any) => new Date(r.timestamp) >= oneHourAgo);
+    const proofSensor = await kv.get(`sensor:${user.id}:${id}`);
+    const lastHourReadings = await getSensorReadings(id, proofSensor, { since: oneHourAgo });
     const tree = await buildMerkleTreeFromReadings(lastHourReadings);
 
     if (leafIndex >= tree.leafCount) {
@@ -977,8 +1080,7 @@ app.get("/server/public/sensors/:sensorId/merkle-proof/:leafIndex", async (c) =>
     }
 
     const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
-    const readings = await kv.getByPrefix(`reading:${sensorId}:`);
-    const lastHourReadings = readings.filter((r: any) => new Date(r.timestamp) >= oneHourAgo);
+    const lastHourReadings = await getSensorReadings(sensorId, sensor, { since: oneHourAgo });
     const tree = await buildMerkleTreeFromReadings(lastHourReadings);
 
     if (leafIndex >= tree.leafCount) {
@@ -1011,9 +1113,9 @@ app.get("/server/stats", async (c) => {
     let totalDatasets = 0;
     
     for (const sensor of sensors) {
-      const readings = await kv.getByPrefix(`reading:${sensor.id}:`);
+      const readingCount = await countSensorReadings(sensor.id, sensor);
       const datasets = await kv.getByPrefix(`dataset:${sensor.id}:`);
-      totalReadings += readings.length;
+      totalReadings += readingCount;
       totalDatasets += datasets.length;
     }
 
@@ -1067,22 +1169,20 @@ app.get("/server/public/sensors/featured", async (c) => {
       const publicDatasets = datasets.filter((d: any) => d.isPublic === true);
       
       if (true) { // Always include public sensors, even without datasets
-        const readings = await kv.getByPrefix(`reading:${sensor.id}:`);
+        const [lastReadings, totalReadingsCount] = await Promise.all([
+          getSensorReadings(sensor.id, sensor, { limit: 1 }),
+          countSensorReadings(sensor.id, sensor),
+        ]);
         const verifiedDatasets = publicDatasets.filter((d: any) => d.status === 'anchored');
-        
+
         // Calculate total verified (sum of all dataset accesses)
         const totalVerified = datasets.reduce((sum: number, d: any) => sum + (d.accessCount || 0), 0);
-        
-        // Get last reading
-        const sortedReadings = readings.sort((a: any, b: any) => 
-          new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
-        );
 
         // Calculate hourly Merkle root
         let hourlyMerkleRoot = null;
         try {
           const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
-          const lastHourReadings = readings.filter((r: any) => new Date(r.timestamp) >= oneHourAgo);
+          const lastHourReadings = await getSensorReadings(sensor.id, sensor, { since: oneHourAgo });
           const featuredTree = await buildMerkleTreeFromReadings(lastHourReadings);
           hourlyMerkleRoot = featuredTree.root;
         } catch (merkleError) {
@@ -1094,13 +1194,13 @@ app.get("/server/public/sensors/featured", async (c) => {
           name: sensor.name,
           type: sensor.type,
           status: sensor.status,
-          lastReading: sortedReadings[0] || null,
+          lastReading: lastReadings[0] || null,
           publicDatasetsCount: publicDatasets.length,
-          totalReadingsCount: readings.length,
+          totalReadingsCount,
           verifiedDatasetsCount: verifiedDatasets.length,
           totalVerified,
           hourlyMerkleRoot,
-          lastActivity: sortedReadings[0]?.timestamp || sensor.createdAt,
+          lastActivity: lastReadings[0]?.timestamp || sensor.createdAt,
         });
       }
     }
@@ -1188,10 +1288,7 @@ app.get("/server/public/readings/:sensorId", async (c) => {
       return c.json({ error: 'Sensor readings are not public' }, 403);
     }
     
-    const readings = await kv.getByPrefix(`reading:${sensorId}:`);
-    const sortedReadings = readings
-      .sort((a: any, b: any) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
-      .slice(0, limit);
+    const sortedReadings = await getSensorReadings(sensorId, sensor, { limit });
 
     return c.json({ readings: sortedReadings });
   } catch (error) {
@@ -1219,8 +1316,7 @@ app.get("/server/public/sensors/:sensorId/hourly-merkle", async (c) => {
     
     // Calculate hourly Merkle root
     const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
-    const readings = await kv.getByPrefix(`reading:${sensorId}:`);
-    const lastHourReadings = readings.filter((r: any) => new Date(r.timestamp) >= oneHourAgo);
+    const lastHourReadings = await getSensorReadings(sensorId, sensor, { since: oneHourAgo });
     const tree = await buildMerkleTreeFromReadings(lastHourReadings);
 
     return c.json({
@@ -1325,8 +1421,8 @@ app.post("/server/register-device", async (c) => {
       const { error: upsertError } = await supabase
         .from('devices')
         .upsert(
-          { "publicKey": publicKey, "macAddress": macAddress, "challenge": challengeValue },
-          { onConflict: 'publicKey' }
+          { public_key: publicKey, mac_address: macAddress, challenge: challengeValue },
+          { onConflict: 'public_key' }
         );
 
       if (upsertError) {
@@ -1346,7 +1442,7 @@ app.post("/server/register-device", async (c) => {
     const { data: device, error: fetchError } = await supabase
       .from('devices')
       .select('*')
-      .eq('publicKey', publicKey)
+      .eq('public_key', publicKey)
       .single();
 
     if (fetchError || !device) {
@@ -1358,12 +1454,12 @@ app.post("/server/register-device", async (c) => {
     }
 
     // Already registered? Return existing identity (idempotent)
-    if (device.nftAddress) {
+    if (device.nft_address) {
       console.log(`ℹ️  Device already registered, returning existing identity`);
       return c.json({
-        nftAddress: device.nftAddress,
-        claimToken: device.claimToken,
-        txSignature: device.txSignature,
+        nftAddress: device.nft_address,
+        claimToken: device.claim_token,
+        txSignature: device.tx_signature,
       });
     }
 
@@ -1409,12 +1505,12 @@ app.post("/server/register-device", async (c) => {
     const { error: updateError } = await supabase
       .from('devices')
       .update({
-        "nftAddress": nftAddress,
-        "claimToken": claimToken,
-        "txSignature": txSig,
-        "challenge": null,
+        nft_address: nftAddress,
+        claim_token: claimToken,
+        tx_signature: txSig,
+        challenge: null,
       })
-      .eq('publicKey', publicKey);
+      .eq('public_key', publicKey);
 
     if (updateError) {
       console.error('Device update error:', updateError);
@@ -1445,7 +1541,7 @@ app.post("/server/sensor-data", async (c) => {
     const { data: device, error: fetchError } = await supabase
       .from('devices')
       .select('*')
-      .eq('nftAddress', nftAddress)
+      .eq('nft_address', nftAddress)
       .single();
 
     if (fetchError || !device) {
@@ -1458,7 +1554,7 @@ app.post("/server/sensor-data", async (c) => {
 
     // Rate limit: 55s minimum between readings
     const nowSec = Math.floor(Date.now() / 1000);
-    if (device.lastTsSeen && (nowSec - Number(device.lastTsSeen)) < 55) {
+    if (device.last_ts_seen && (nowSec - Number(device.last_ts_seen)) < 55) {
       return c.json({ error: 'Rate limited - wait before sending another reading' }, 429);
     }
 
@@ -1481,9 +1577,9 @@ app.post("/server/sensor-data", async (c) => {
       sigBytes[32 + i] = parseInt(sHex.substring(i * 2, i * 2 + 2), 16);
     }
 
-    const pubKeyBytes = new Uint8Array(device.publicKey.length / 2);
+    const pubKeyBytes = new Uint8Array(device.public_key.length / 2);
     for (let i = 0; i < pubKeyBytes.length; i++) {
-      pubKeyBytes[i] = parseInt(device.publicKey.substring(i * 2, i * 2 + 2), 16);
+      pubKeyBytes[i] = parseInt(device.public_key.substring(i * 2, i * 2 + 2), 16);
     }
 
     const sigObj = secp256k1.secp256k1.Signature.fromCompact(sigBytes);
@@ -1510,22 +1606,17 @@ app.post("/server/sensor-data", async (c) => {
     // Update device lastTsSeen
     await supabase
       .from('devices')
-      .update({ "lastTsSeen": nowSec })
-      .eq('nftAddress', nftAddress);
+      .update({ last_ts_seen: nowSec })
+      .eq('nft_address', nftAddress);
 
     // Also store in KV store so the dashboard Live Stream / Real-Time Chart can display it
     try {
       const allSensors = await kv.getByPrefix('sensor:');
-      const linkedSensor = allSensors.find((s: any) => s.claimToken === device.claimToken);
+      const linkedSensor = allSensors.find((s: any) => s.claimToken === device.claim_token);
 
       if (linkedSensor) {
         // Determine sensor type config for unit
-        const typeConfigs: Record<string, { unit: string; variable: string }> = {
-          temperature: { unit: '°C', variable: 'temperature' },
-          humidity: { unit: '%', variable: 'humidity' },
-          ph: { unit: 'pH', variable: 'ph_level' },
-        };
-        const config = typeConfigs[linkedSensor.type] || typeConfigs.temperature;
+        const config = sensorTypeConfigs[linkedSensor.type] || sensorTypeConfigs.temperature;
         const mainValue = payload.temperature ?? payload.humidity ?? payload.ph_level ?? 0;
 
         // Hash the reading data
@@ -1551,8 +1642,6 @@ app.post("/server/sensor-data", async (c) => {
           signature: `device_sig_${signature.r.substring(0, 16)}`,
         };
 
-        await kv.set(`reading:${linkedSensor.id}:${readingId}`, kvReading);
-
         // Update sensor status to active + last reading
         linkedSensor.status = 'active';
         linkedSensor.lastReading = kvReading;
@@ -1561,7 +1650,7 @@ app.post("/server/sensor-data", async (c) => {
 
         console.log(`📊 KV reading stored for sensor "${linkedSensor.name}" (${linkedSensor.id})`);
       } else {
-        console.log(`ℹ️  No KV sensor linked to claimToken ${device.claimToken?.substring(0, 12)}...`);
+        console.log(`ℹ️  No KV sensor linked to claim_token ${device.claim_token?.substring(0, 12)}...`);
       }
     } catch (kvErr: any) {
       // KV write is best-effort — don't fail the main request
@@ -1573,6 +1662,149 @@ app.post("/server/sensor-data", async (c) => {
 
   } catch (err: any) {
     console.error('sensor-data error:', err);
+    return c.json({ error: err.message || 'Internal server error' }, 500);
+  }
+});
+
+// POST /server/device-location (no user JWT required)
+// ESP sends WiFi AP scan results, backend resolves to lat/lng via Mylnikov API (ADR-009)
+app.post("/server/device-location", async (c) => {
+  try {
+    const body = await c.req.json();
+    const { nftAddress, wifiAccessPoints } = body;
+
+    if (!nftAddress || !wifiAccessPoints || !Array.isArray(wifiAccessPoints) || wifiAccessPoints.length === 0) {
+      return c.json({ error: 'Missing nftAddress or wifiAccessPoints array' }, 400);
+    }
+
+    // Fetch device by nft_address
+    const { data: device, error: fetchError } = await supabase
+      .from('devices')
+      .select('*')
+      .eq('nft_address', nftAddress)
+      .single();
+
+    if (fetchError || !device) {
+      return c.json({ error: 'Device not found for nftAddress: ' + nftAddress }, 404);
+    }
+
+    // Skip if location was updated recently (< 24h ago)
+    if (device.latitude && device.updated_at) {
+      const lastUpdate = new Date(device.updated_at).getTime();
+      const hoursSinceUpdate = (Date.now() - lastUpdate) / (1000 * 60 * 60);
+      if (hoursSinceUpdate < 24) {
+        return c.json({
+          success: true,
+          cached: true,
+          location: device.location,
+          latitude: device.latitude,
+          longitude: device.longitude,
+        });
+      }
+    }
+
+    // Query Mylnikov API for each BSSID and compute RSSI-weighted centroid
+    const resolvedAPs: Array<{ lat: number; lon: number; range: number; rssi: number }> = [];
+
+    for (const ap of wifiAccessPoints) {
+      try {
+        const bssid = (ap.macAddress as string).toUpperCase();
+        const mylnikovRes = await fetch(
+          `https://api.mylnikov.org/geolocation/wifi?v=1.2&bssid=${encodeURIComponent(bssid)}`
+        );
+        if (mylnikovRes.ok) {
+          const mylnikovData = await mylnikovRes.json();
+          if (mylnikovData.result === 200 && mylnikovData.data) {
+            resolvedAPs.push({
+              lat: mylnikovData.data.lat,
+              lon: mylnikovData.data.lon,
+              range: mylnikovData.data.range ?? 100,
+              rssi: ap.signalStrength ?? -70,
+            });
+          }
+        }
+      } catch (apErr: any) {
+        console.error(`Mylnikov lookup failed for ${ap.macAddress}:`, apErr.message);
+      }
+    }
+
+    if (resolvedAPs.length === 0) {
+      return c.json({ error: 'Could not determine location from WiFi data' }, 422);
+    }
+
+    // Compute RSSI-weighted centroid: weight = 10^(RSSI_dBm / 10)
+    let weightSum = 0;
+    let latSum = 0;
+    let lonSum = 0;
+    let rangeSum = 0;
+
+    for (const ap of resolvedAPs) {
+      const weight = Math.pow(10, ap.rssi / 10);
+      latSum += ap.lat * weight;
+      lonSum += ap.lon * weight;
+      rangeSum += ap.range;
+      weightSum += weight;
+    }
+
+    const latitude = latSum / weightSum;
+    const longitude = lonSum / weightSum;
+    const accuracy = Math.round(rangeSum / resolvedAPs.length);
+
+    // Reverse geocode via Nominatim
+    let locationText = `${latitude.toFixed(4)}, ${longitude.toFixed(4)}`;
+    try {
+      const reverseGeoResponse = await fetch(
+        `https://nominatim.openstreetmap.org/reverse?lat=${latitude}&lon=${longitude}&format=json&zoom=10`,
+        { headers: { 'User-Agent': 'SparkedSense/1.0' } }
+      );
+      if (reverseGeoResponse.ok) {
+        const reverseData = await reverseGeoResponse.json();
+        const addr = reverseData.address;
+        if (addr) {
+          const parts = [
+            addr.city || addr.town || addr.village || addr.municipality,
+            addr.state,
+            addr.country,
+          ].filter(Boolean);
+          if (parts.length > 0) locationText = parts.join(', ');
+        }
+      }
+    } catch (reverseErr: any) {
+      console.error('Reverse geocoding error (non-fatal):', reverseErr.message);
+    }
+
+    // Update device in database
+    const { error: updateError } = await supabase
+      .from('devices')
+      .update({ location: locationText, latitude, longitude, location_accuracy: accuracy })
+      .eq('nft_address', nftAddress);
+
+    if (updateError) {
+      console.error('Device location update error:', updateError);
+      return c.json({ error: 'DB error: ' + updateError.message }, 500);
+    }
+
+    // Update KV sensor metadata (best-effort)
+    try {
+      const allSensors = await kv.getByPrefix('sensor:');
+      const linkedSensor = allSensors.find((s: any) => s.claimToken === device.claim_token);
+      if (linkedSensor) {
+        linkedSensor.location = locationText;
+        linkedSensor.latitude = latitude;
+        linkedSensor.longitude = longitude;
+        linkedSensor.locationAccuracy = accuracy;
+        linkedSensor.updatedAt = new Date().toISOString();
+        await kv.set(`sensor:${linkedSensor.owner}:${linkedSensor.id}`, linkedSensor);
+      }
+    } catch (kvErr: any) {
+      console.error('KV location update error (non-fatal):', kvErr.message);
+    }
+
+    console.log(`📍 Location: ${nftAddress.substring(0, 16)}... → ${locationText} (±${accuracy}m)`);
+    return c.json({ success: true, location: locationText, latitude, longitude, accuracy });
+
+  } catch (err: any) {
+    console.error('device-location error:', err);
     return c.json({ error: err.message || 'Internal server error' }, 500);
   }
 });

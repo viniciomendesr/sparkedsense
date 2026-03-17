@@ -202,14 +202,50 @@ Format inspired by [Keep a Changelog](https://keepachangelog.com/).
 
 ---
 
+## Phase 10 — Schema normalization, readings migration to PostgreSQL, WiFi geolocation (17 Mar 2026)
+
+**Contributor:** Vinicio Mendes (with AI assistance — Claude)
+
+### Fixed (database — schema normalization)
+- **Production `devices` table renamed from camelCase to snake_case:** `publicKey` → `public_key`, `macAddress` → `mac_address`, `nftAddress` → `nft_address`, `txSignature` → `tx_signature`, `lastTsSeen` → `last_ts_seen`, `claimToken` → `claim_token`, `ownerAddress` → `owner_address`
+- Added `id UUID` primary key to `devices` (was using `publicKey` as PK)
+- Added missing columns to `devices` in production: `name`, `type`, `description`, `visibility`, `mode`, `status`, `owner_wallet`, `owner_user_id`, `thumbnail_url`, `created_at`, `updated_at`
+- Local migration `002_fix_schema_gaps.sql`: creates `kv_store_4a89e1c9` table, adds IoT columns (`challenge`, `nft_address`, `tx_signature`, `last_ts_seen`, `revoked`), geolocation columns (`location`, `latitude`, `longitude`, `location_accuracy`), and composite index `idx_sensor_readings_nft_ts`
+- All Edge Function queries updated to use snake_case column names (8 callsites in `register-device`, `sensor-data`, and `resolveNftAddress`)
+
+### Changed (backend — readings migration from KV to PostgreSQL)
+- **Eliminated O(n) KV store scans for readings:** all 15 `kv.getByPrefix('reading:...')` callsites replaced with `getSensorReadings()` helper that queries `sensor_readings` PostgreSQL table directly via index scan
+- New `countSensorReadings()` helper uses `SELECT count` for stats/featured (avoids fetching all rows)
+- Mock sensors continue reading from KV store (fallback path preserved)
+- `POST /sensor-data` no longer writes readings to KV store — only sensor metadata updates remain
+- **Cleaned 9,482 stale reading entries from `kv_store`** — freed ~39 MB of storage (95% of KV usage)
+- Readings count in featured/stats now shows correct total (was capped at 1,000 by Supabase JS client default)
+
+### Added (WiFi geolocation — ADR-009)
+- `POST /server/device-location` endpoint: receives WiFi AP scan (BSSIDs + RSSI), queries Mylnikov API per BSSID, computes RSSI-weighted centroid, reverse geocodes via Nominatim, stores location in `devices` table + KV sensor metadata
+- ESP8266 firmware: `scanAndReportLocation()` scans nearby WiFi networks on boot, sends top 5 APs (BSSID + RSSI) to backend — fire-and-forget, non-blocking
+- Frontend: location display with MapPin icon in sensor-card, sensor-detail, and public-sensor-detail; coordinate display with accuracy when available
+- Geolocation columns added to `devices`: `location` (text), `latitude`, `longitude`, `location_accuracy` (numeric)
+
+### Known issue
+- **Mylnikov API has poor coverage in Brazil** — the 5 BSSIDs scanned by the ESP8266 returned HTTP 422 (not found). Needs alternative provider (Apple WiFi DB via Cloudflare Worker is available in `wifi-geolocate-worker/` but not yet deployed)
+
+### Verified
+- 32/32 local test suite passing
+- Production sensor (DHT11) continues receiving data normally (28.8°C @ 22:31 UTC)
+- Readings count in production correctly shows 9,735 (was stuck at 1,000)
+
+---
+
 ## Current status
 
-**Implemented:** End-to-end DePIN flow with secp256k1 cryptographic authentication, simulated digital identity (nftAddress), real-time dashboard with automatic polling for real sensors, binary Merkle tree with inclusion proofs for dataset integrity verification (client-side and server-side), dual-layer storage (PostgreSQL + KV store), Solana devnet wallet under project control, homepage with Featured Public Sensors. Structured documentation with ADR index and timeline in `docs/`.
+**Implemented:** End-to-end DePIN flow with secp256k1 cryptographic authentication, simulated digital identity (nftAddress), real-time dashboard with automatic polling for real sensors, binary Merkle tree with inclusion proofs for dataset integrity verification (client-side and server-side), PostgreSQL as canonical storage for sensor readings (KV store retained only for sensor metadata and datasets), Solana devnet wallet under project control, homepage with Featured Public Sensors, WiFi-based geolocation endpoint (pending provider with Brazil coverage). Structured documentation with ADR index and timeline in `docs/`.
 
 **Next steps (from ADR-007):**
 1. ~~Fix Merkle tree implementation~~ — done (Phase 8)
-2. Define NFT metadata schema for device identity
-3. Define anchoring transaction format (Memo Program vs metadata update vs PDA)
-4. Implement real Solana devnet integration (NFT minting + dataset anchoring)
+2. Deploy WiFi geolocation provider with Brazil coverage (Apple WiFi DB via Cloudflare Worker)
+3. Define NFT metadata schema for device identity
+4. Define anchoring transaction format (Memo Program vs metadata update vs PDA)
+5. Implement real Solana devnet integration (NFT minting + dataset anchoring)
 
-**Also pending:** Permanent sensing station setup (ESP8266 + DHT11 on continuous USB power), backend modularization, and open source documentation.
+**Also pending:** Firmware resilience (WiFi reconnection, watchdog, HTTPS timeout — see audit), backend modularization, and open source documentation.

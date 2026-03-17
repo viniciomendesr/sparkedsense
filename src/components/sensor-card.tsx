@@ -2,7 +2,7 @@ import { Sensor } from '../lib/types';
 import { Card } from './ui/card';
 import { Badge } from './ui/badge';
 import { Button } from './ui/button';
-import { Activity, Eye, EyeOff, Lock, AlertCircle, Calendar, Clock, Hexagon } from 'lucide-react';
+import { Activity, Eye, EyeOff, Lock, AlertCircle, Calendar, Clock, Hexagon, MapPin } from 'lucide-react';
 import { ImageWithFallback } from './figma/ImageWithFallback';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from './ui/tooltip';
 
@@ -87,6 +87,16 @@ export function SensorCard({ sensor, liveData, onViewDetails, showMiniSparkline 
         <p className="text-sm mb-4 line-clamp-2" style={{ color: 'var(--text-secondary)' }}>
           {sensor.description}
         </p>
+
+        {/* Location */}
+        {sensor.location && (
+          <div className="flex items-center gap-1.5 mb-4">
+            <MapPin className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+            <span className="text-sm truncate" style={{ color: 'var(--text-secondary)' }}>
+              {sensor.location}
+            </span>
+          </div>
+        )}
 
         {/* Badges */}
         <div className="flex flex-wrap items-center gap-2 mb-4">
