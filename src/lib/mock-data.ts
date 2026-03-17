@@ -8,6 +8,7 @@ export const mockSensors: Sensor[] = [
     name: 'Lab Temperature Monitor',
     type: 'temperature',
     description: 'Primary temperature sensor in laboratory environment',
+    location: 'São Paulo, Brazil',
     visibility: 'public',
     status: 'active',
     owner: mockWalletAddress,

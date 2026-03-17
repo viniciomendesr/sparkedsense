@@ -15,7 +15,8 @@ import {
   Calendar,
   Clock,
   Copy,
-  Info
+  Info,
+  MapPin
 } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { publicAPI } from '../lib/api';
@@ -250,6 +251,20 @@ export function PublicSensorDetailPage({
                   <p className="mb-4" style={{ color: 'var(--text-secondary)' }}>
                     {sensor.description}
                   </p>
+                  {sensor.location && (
+                    <div className="flex items-center gap-1.5 mb-4">
+                      <MapPin className="w-4 h-4 text-muted-foreground shrink-0" />
+                      <span className="text-sm" style={{ color: 'var(--text-secondary)' }}>
+                        {sensor.location}
+                        {sensor.latitude != null && sensor.longitude != null && (
+                          <span className="text-xs ml-2" style={{ color: 'var(--text-muted)' }}>
+                            ({sensor.latitude.toFixed(4)}, {sensor.longitude.toFixed(4)}
+                            {sensor.locationAccuracy != null && ` ±${Math.round(sensor.locationAccuracy)}m`})
+                          </span>
+                        )}
+                      </span>
+                    </div>
+                  )}
                   <div className="flex items-center gap-2 flex-wrap">
                     {!sensor.thumbnailUrl && (
                       <Badge variant="outline" className="border-border">

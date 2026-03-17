@@ -32,8 +32,9 @@ const char* password = "queimeacaixav2";
 const char* supabaseAnonKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRqemV4aXZ2ZGR6emR1ZXRta2VsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjE3ODYzMzAsImV4cCI6MjA3NzM2MjMzMH0.hW1SyZKQRzI-ghokMb-F5uccV52vxixE0aH78lNZ1F4";
 
 // API Endpoints (Supabase Edge Function - already deployed and running)
-const char* registerDeviceEndpoint = "https://djzexivvddzzduetmkel.supabase.co/functions/v1/server/register-device";
-const char* sensorDataEndpoint     = "https://djzexivvddzzduetmkel.supabase.co/functions/v1/server/sensor-data";
+const char* registerDeviceEndpoint  = "https://djzexivvddzzduetmkel.supabase.co/functions/v1/server/register-device";
+const char* sensorDataEndpoint      = "https://djzexivvddzzduetmkel.supabase.co/functions/v1/server/sensor-data";
+const char* deviceLocationEndpoint  = "https://djzexivvddzzduetmkel.supabase.co/functions/v1/server/device-location";
 
 // =====================================================
 // --- EEPROM Configuration ---
@@ -275,6 +276,62 @@ bool checkForResetCommand() {
 }
 
 // =====================================================
+// --- WiFi Geolocation (ADR-009) ---
+// =====================================================
+void scanAndReportLocation() {
+  Serial.println("📍 Scanning WiFi networks for geolocation...");
+
+  int n = WiFi.scanNetworks();
+  if (n <= 0) {
+    Serial.println("⚠️  No WiFi networks found, skipping geolocation.");
+    return;
+  }
+
+  Serial.printf("📍 Found %d networks. Sending top %d to server.\n", n, min(n, 5));
+
+  // Build JSON with up to 5 strongest APs
+  DynamicJsonDocument doc(1024);
+  doc["nftAddress"] = nftAddressStored;
+  JsonArray aps = doc.createNestedArray("wifiAccessPoints");
+
+  // WiFi.scanNetworks() returns results sorted by RSSI (strongest first)
+  int count = min(n, 5);
+  for (int i = 0; i < count; i++) {
+    JsonObject ap = aps.createNestedObject();
+    ap["macAddress"] = WiFi.BSSIDstr(i);
+    ap["signalStrength"] = WiFi.RSSI(i);
+  }
+
+  String payload;
+  serializeJson(doc, payload);
+
+  // Send to backend (fire-and-forget)
+  WiFiClientSecure client;
+  client.setInsecure();
+  HTTPClient http;
+  http.begin(client, deviceLocationEndpoint);
+  http.addHeader("Content-Type", "application/json");
+  http.addHeader("Authorization", String("Bearer ") + supabaseAnonKey);
+
+  int code = http.POST(payload);
+  String response = http.getString();
+  http.end();
+
+  if (code == 200 || code == 201) {
+    Serial.println("📍 Location reported successfully!");
+    DynamicJsonDocument respDoc(512);
+    if (deserializeJson(respDoc, response) == DeserializationError::Ok) {
+      const char* location = respDoc["location"];
+      if (location) Serial.printf("📍 Location: %s\n", location);
+    }
+  } else {
+    Serial.printf("⚠️  Location report failed (HTTP %d) - non-critical, continuing.\n", code);
+  }
+
+  WiFi.scanDelete(); // Free scan memory
+}
+
+// =====================================================
 // --- Setup ---
 // =====================================================
 void setup() {
@@ -334,6 +391,9 @@ void setup() {
     Serial.println("   NFT: " + nftAddressStored);
     Serial.println("   Token: " + claimTokenStored);
   }
+
+  // Report location via WiFi AP scan (ADR-009)
+  scanAndReportLocation();
 
   Serial.println("\n🚀 Ready! Sending DHT11 data every 60s.");
   Serial.println("💡 Send 'RESET' via Serial Monitor to clear device.");

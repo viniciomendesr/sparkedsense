@@ -1,7 +1,7 @@
 # ADR-004: Dual-layer storage — PostgreSQL + KV store
 
 **Date:** 2026-03-10 16:52
-**Status:** Accepted
+**Status:** Partially superseded — readings removed from KV store (Phase 10, 2026-03-17)
 
 ## Context
 
@@ -41,3 +41,9 @@ The `sensor-data` endpoint bridges both layers: it writes the raw reading to Pos
 - KV prefix scans become problematic above ~10K items per prefix
 - Featured sensors endpoint scans all public sensors on every request
 - Migration to indexed relational tables is planned when the data model stabilizes
+
+### Update (2026-03-17 — Phase 10)
+
+The audit of 2026-03-16 found that KV store readings (`reading:*` keys) consumed 95% of database storage (~39 MB) with O(n) prefix scans on 9,000+ rows per API call. Readings were migrated to query `sensor_readings` (PostgreSQL) directly via `getSensorReadings()` helper with indexed lookups. The `sensor-data` endpoint no longer writes readings to KV store. 9,482 stale `reading:*` entries were deleted.
+
+**KV store now holds only:** sensor metadata (`sensor:*`), datasets (`dataset:*`), and claim tokens (`claim_token:*`) — typically <20 rows total.
