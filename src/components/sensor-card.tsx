@@ -182,20 +182,21 @@ export function SensorCard({ sensor, liveData, onViewDetails, showMiniSparkline 
         )}
 
         {/* Mini Sparkline */}
-        {showMiniSparkline && liveData && liveData.length > 0 && (
+        {showMiniSparkline && liveData && liveData.length > 1 && (
           <div className="h-12 relative mb-4">
-            <svg className="w-full h-full" preserveAspectRatio="none">
+            <svg className="w-full h-full" viewBox="0 0 100 100" preserveAspectRatio="none">
               <polyline
                 fill="none"
                 stroke="var(--chart-1)"
                 strokeWidth="2"
+                vectorEffect="non-scaling-stroke"
                 points={liveData.map((d, i) => {
                   const x = (i / (liveData.length - 1)) * 100;
                   const minVal = Math.min(...liveData.map(p => p.value));
                   const maxVal = Math.max(...liveData.map(p => p.value));
                   const range = maxVal - minVal || 1;
                   const y = 100 - ((d.value - minVal) / range) * 100;
-                  return `${x}%,${y}%`;
+                  return `${x},${y}`;
                 }).join(' ')}
               />
             </svg>
