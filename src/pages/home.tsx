@@ -3,11 +3,12 @@ import { useNavigate } from 'react-router-dom';
 import { Button } from '../components/ui/button';
 import { Card } from '../components/ui/card';
 import { Badge } from '../components/ui/badge';
-import { Wifi, Shield, Database, CheckCircle2, ArrowRight, Activity, TrendingUp, GraduationCap, Users, Github, Linkedin, FileText, BookOpen } from 'lucide-react';
+import { Wifi, Shield, Database, CheckCircle2, ArrowRight, Activity, TrendingUp, GraduationCap, Users, Github, Linkedin, FileText, BookOpen, Hash } from 'lucide-react';
 import { useAuth } from '../lib/auth-context';
 import { publicAPI } from '../lib/api';
 import { SensorMetrics } from '../lib/types';
 import { supabase } from '../utils/supabase/client';
+import { formatDataSize } from '../lib/format';
 
 interface HomePageProps {
   onGetStarted: () => void;
@@ -98,45 +99,62 @@ export function HomePage({ onGetStarted }: HomePageProps) {
   const features = [
     {
       icon: <Wifi className="w-6 h-6" />,
-      title: 'Real-Time Streaming',
+      title: 'Real-time streaming',
       description: 'Live sensor data with cryptographic verification at the device level',
     },
     {
       icon: <Shield className="w-6 h-6" />,
-      title: 'Blockchain Anchoring',
+      title: 'Blockchain anchoring',
       description: 'Dataset integrity proofs anchored on Solana for immutable verification',
     },
     {
       icon: <Database className="w-6 h-6" />,
-      title: 'Decentralized Storage',
+      title: 'Decentralized storage',
       description: 'No centralized cloud dependency—full data provenance and ownership',
     },
   ];
 
   return (
     <div className="min-h-[calc(100vh-8rem)] flex flex-col">
+      <style>{`
+        @keyframes featured-pulse {
+          0%, 100% { opacity: 0; background-position: -100% -100%; }
+          50% { opacity: 0.12; background-position: 200% 200%; }
+        }
+        @keyframes featured-scan {
+          0% { transform: translateX(-100%); }
+          100% { transform: translateX(400%); }
+        }
+        .featured-card-active {
+          animation: featured-glow 4s ease-in-out infinite;
+        }
+        @keyframes featured-glow {
+          0%, 100% { box-shadow: 0 0 0px 0px rgba(99, 210, 130, 0); }
+          50% { box-shadow: 0 0 12px 1px rgba(99, 210, 130, 0.15); }
+        }
+      `}</style>
       {/* Hero Section */}
-      <section className="flex-1 flex items-center justify-center px-4 py-16">
+      <section className="flex-1 flex items-center justify-center px-4 sm:px-6 py-12 sm:py-16">
         <div className="max-w-4xl mx-auto text-center">
-          <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-primary/10 border border-primary/20 mb-6">
-            <CheckCircle2 className="w-4 h-4 text-primary" />
-            <span className="text-sm" style={{ color: 'var(--primary)' }}>
+          <div className="inline-flex items-center gap-2 px-3 sm:px-4 py-2 rounded-full bg-primary/10 border border-primary/20 mb-6">
+            <CheckCircle2 className="w-4 h-4 text-primary shrink-0" />
+            <span className="text-xs sm:text-sm" style={{ color: 'var(--primary)' }}>
               Web3 Infrastructure for IoT Data Validation
             </span>
           </div>
-          
-          <h1 className="mb-6" style={{ fontSize: '2.5rem', fontWeight: 600, lineHeight: '1.2', color: 'var(--text-primary)' }}>
+
+          <h1 className="text-2xl sm:text-4xl mb-6" style={{ fontWeight: 600, lineHeight: '1.2', color: 'var(--text-primary)' }}>
             Turn real-world sensors into
             <br />
             <span className="text-primary">Verifiable data streams</span>
           </h1>
-          
-          <p className="mb-8 max-w-2xl mx-auto text-lg" style={{ color: 'var(--text-secondary)', lineHeight: '1.5' }}>
+
+          <p className="mb-8 max-w-2xl mx-auto text-sm sm:text-lg" style={{ color: 'var(--text-secondary)', lineHeight: '1.6' }}>
             Sparked Sense connects IoT sensors directly to the Solana blockchain, transforming physical measurements into auditable, economically valuable data without centralized intermediaries.
           </p>
 
-          <div className="flex items-center justify-center gap-4">
-            <Button 
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-center gap-3 sm:gap-4">
+            <Button
               onClick={handleGetStarted}
               size="lg"
               className="bg-primary text-primary-foreground"
@@ -145,14 +163,14 @@ export function HomePage({ onGetStarted }: HomePageProps) {
               {user ? 'Go to Dashboard' : 'Sign In to Get Started'}
               <ArrowRight className="w-4 h-4 ml-2" />
             </Button>
-            <Button 
+            <Button
               variant="outline"
               size="lg"
               className="border-primary/50 hover:bg-primary/5"
               onClick={() => navigate('/public-sensors')}
             >
               <Database className="w-4 h-4" />
-              View Public Sensors
+              View public sensors
             </Button>
           </div>
         </div>
@@ -160,22 +178,22 @@ export function HomePage({ onGetStarted }: HomePageProps) {
 
       {/* Featured Public Sensors */}
       {(featuredSensors.length > 0 || fetchError) && (
-        <section className="px-4 py-16 border-t border-border">
+        <section className="px-4 sm:px-6 py-12 sm:py-16 border-t border-border">
           <div className="max-w-6xl mx-auto">
-            <div className="flex items-center justify-between mb-8">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
               <div>
-                <h2 style={{ fontSize: '1.75rem', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '8px' }}>
-                  Featured Public Sensors
+                <h2 className="text-xl sm:text-2xl" style={{ fontWeight: 600, color: 'var(--text-primary)', marginBottom: '8px' }}>
+                  Featured public sensors
                 </h2>
-                <p style={{ color: 'var(--text-secondary)' }}>
+                <p className="text-sm sm:text-base" style={{ color: 'var(--text-secondary)' }}>
                   Top verified sensors from our infrastructure
                 </p>
               </div>
-              <Button 
+              <Button
                 variant="outline"
                 onClick={() => navigate('/public-sensors')}
               >
-                View All
+                View all
                 <ArrowRight className="w-4 h-4" />
               </Button>
             </div>
@@ -188,7 +206,7 @@ export function HomePage({ onGetStarted }: HomePageProps) {
                   </div>
                   <div>
                     <h3 className="mb-2" style={{ fontWeight: 600, color: 'var(--text-primary)' }}>
-                      Unable to Load Featured Sensors
+                      Unable to load featured sensors
                     </h3>
                     <p className="text-sm mb-4" style={{ color: 'var(--text-secondary)' }}>
                       {fetchError}
@@ -207,113 +225,155 @@ export function HomePage({ onGetStarted }: HomePageProps) {
                 </div>
               </Card>
             ) : (
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                {loadingFeatured ? (
-                  [1, 2, 3].map((i) => (
+              loadingFeatured ? (
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                  {[1, 2, 3].map((i) => (
                     <Card key={i} className="p-6 animate-pulse">
-                      <div className="h-48 bg-muted rounded mb-4"></div>
                       <div className="h-4 bg-muted rounded w-3/4 mb-4"></div>
                       <div className="h-3 bg-muted rounded w-1/2 mb-2"></div>
                       <div className="h-3 bg-muted rounded w-2/3"></div>
                     </Card>
-                  ))
-                ) : (
-                  featuredSensors.map((sensor, index) => (
+                  ))}
+                </div>
+              ) : featuredSensors.length === 0 ? null : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {featuredSensors.map((sensor, index) => (
                     <div
                       key={sensor.id}
                       className={`transition-all duration-500 ${
-                        index < visibleCount 
-                          ? 'opacity-100 translate-y-0' 
+                        index < visibleCount
+                          ? 'opacity-100 translate-y-0'
                           : 'opacity-0 translate-y-4'
                       }`}
                     >
-                      <Card 
-                        className="p-6 bg-card border-border hover:border-primary/50 transition-all duration-200 cursor-pointer"
+                      <Card
+                        className={`bg-card border-border hover:border-primary/50 transition-all duration-200 cursor-pointer relative overflow-hidden ${
+                          sensor.status === 'active' ? 'featured-card-active' : ''
+                        }`}
                         onClick={() => navigate(`/audit?sensor=${sensor.id}`)}
                       >
-                      <div className="flex items-start justify-between mb-4">
-                        <div className="flex items-center gap-3">
-                          <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
-                            <Activity className="w-5 h-5" style={{ color: 'var(--primary)' }} />
+                        {sensor.status === 'active' && (
+                          <div className="absolute inset-0 pointer-events-none rounded-[inherit] z-0 overflow-hidden">
+                            <div className="absolute -inset-[1px] rounded-[inherit]"
+                              style={{
+                                background: 'linear-gradient(135deg, transparent 40%, var(--chart-1) 50%, transparent 60%)',
+                                backgroundSize: '200% 200%',
+                                animation: 'featured-pulse 3s ease-in-out infinite',
+                              }}
+                            />
                           </div>
-                          <div>
-                            <h3 style={{ fontWeight: 600, color: 'var(--text-primary)', marginBottom: '2px' }}>
-                              {sensor.name}
-                            </h3>
-                            <Badge variant="outline" style={{ textTransform: 'uppercase', fontSize: '0.75rem' }}>
-                              {sensor.type}
+                        )}
+
+                        <div className="p-6 relative z-[1]">
+                          {/* Header */}
+                          <div className="flex items-start justify-between mb-3">
+                            <div className="flex-1">
+                              <div className="flex items-center gap-2 mb-2">
+                                <h3 className="text-lg" style={{ fontWeight: 600, color: 'var(--text-primary)' }}>
+                                  {sensor.name}
+                                </h3>
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Badges */}
+                          <div className="flex flex-wrap items-center gap-2 mb-4">
+                            <Badge variant="outline" style={{ textTransform: 'capitalize' }}>
+                              {sensor.type.charAt(0).toUpperCase() + sensor.type.slice(1)}
+                            </Badge>
+                            <Badge variant="outline" className="border-border">
+                              <div className="flex items-center gap-1.5">
+                                <div className={`w-2 h-2 rounded-full ${
+                                  sensor.status === 'active' ? 'bg-success animate-pulse' : 'bg-[#4A4F59]'
+                                }`}></div>
+                                {sensor.status === 'active' ? 'Active' : 'Inactive'}
+                              </div>
                             </Badge>
                           </div>
-                        </div>
-                        <div className={`w-2 h-2 rounded-full ${
-                          sensor.status === 'active' ? 'bg-success' : 'bg-[#4A4F59]'
-                        }`}></div>
-                      </div>
 
-                      <div className="space-y-3">
-                        <div className="flex items-center justify-between py-2 border-t border-border">
-                          <span style={{ fontSize: '0.875rem', color: 'var(--text-muted)' }}>
-                            Public Datasets
-                          </span>
-                          <span style={{ fontSize: '0.875rem', fontWeight: 500, color: 'var(--text-primary)' }}>
-                            {sensor.publicDatasetsCount}
-                          </span>
-                        </div>
-                        <div className="flex items-center justify-between py-2 border-t border-border">
-                          <span style={{ fontSize: '0.875rem', color: 'var(--text-muted)' }}>
-                            Total Verified
-                          </span>
-                          <div className="flex items-center gap-2">
-                            {(sensor.totalVerified || 0) > 0 && (
-                              <Shield className="w-3 h-3" style={{ color: 'var(--success)' }} />
+                          {/* Last update */}
+                          <div className="flex items-center justify-between p-3 rounded-lg bg-muted/50 mb-4 relative overflow-hidden">
+                            <div className="flex items-center gap-2">
+                              <Activity className={`w-4 h-4 text-primary ${sensor.status === 'active' ? 'animate-pulse' : ''}`} />
+                              <span className="text-sm" style={{ color: 'var(--text-secondary)' }}>
+                                Latest Reading
+                              </span>
+                            </div>
+                            <div className="text-right">
+                              <p className="text-lg" style={{ fontWeight: 600, color: 'var(--text-primary)' }}>
+                                {sensor.lastActivity
+                                  ? new Date(sensor.lastActivity).toLocaleTimeString()
+                                  : 'N/A'}
+                              </p>
+                              {sensor.lastActivity && (
+                                <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
+                                  {new Date(sensor.lastActivity).toLocaleDateString()}
+                                </p>
+                              )}
+                            </div>
+                            {sensor.status === 'active' && (
+                              <div className="absolute bottom-0 left-0 right-0 h-[2px] overflow-hidden">
+                                <div className="h-full w-1/3 rounded-full"
+                                  style={{
+                                    background: 'linear-gradient(90deg, transparent, var(--chart-1), transparent)',
+                                    animation: 'featured-scan 2.5s ease-in-out infinite',
+                                  }}
+                                />
+                              </div>
                             )}
-                            <span style={{ fontSize: '0.875rem', fontWeight: 500, color: 'var(--text-primary)' }}>
-                              {sensor.totalVerified || 0}
-                            </span>
                           </div>
-                        </div>
-                        <div className="flex items-center justify-between py-2 border-t border-border">
-                          <span style={{ fontSize: '0.875rem', color: 'var(--text-muted)' }}>
-                            Total Readings
-                          </span>
-                          <div className="flex items-center gap-2">
-                            <TrendingUp className="w-3 h-3" style={{ color: 'var(--primary)' }} />
-                            <span style={{ fontSize: '0.875rem', fontWeight: 500, color: 'var(--text-primary)' }}>
-                              {sensor.totalReadingsCount.toLocaleString()}
-                            </span>
-                          </div>
-                        </div>
-                      </div>
 
-                      <Button 
-                        size="sm"
-                        className="w-full mt-4 bg-primary/10 text-primary hover:bg-primary hover:text-primary-foreground"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          navigate(`/audit?sensor=${sensor.id}`);
-                        }}
-                      >
-                        View & Audit
-                        <ArrowRight className="w-4 h-4" />
-                      </Button>
-                    </Card>
+                          {/* Storage Metrics */}
+                          <div className="grid grid-cols-2 gap-3 mb-4">
+                            <div className="p-3 rounded-lg bg-primary/5 border border-primary/10 text-center">
+                              <div className="flex items-center justify-center gap-1.5 mb-1">
+                                <Database className="w-3 h-3 text-primary/60" />
+                                <span className="text-xs uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>Stored</span>
+                              </div>
+                              <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
+                                {formatDataSize(sensor.totalDataBytes ?? 0)}
+                              </p>
+                            </div>
+                            <div className="p-3 rounded-lg bg-primary/5 border border-primary/10 text-center">
+                              <div className="flex items-center justify-center gap-1.5 mb-1">
+                                <Hash className="w-3 h-3 text-primary/60" />
+                                <span className="text-xs uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>Readings</span>
+                              </div>
+                              <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
+                                {sensor.totalReadingsCount.toLocaleString()}
+                              </p>
+                            </div>
+                          </div>
+
+                          {/* Action button */}
+                          <Button
+                            className="w-full bg-primary text-primary-foreground"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              navigate(`/audit?sensor=${sensor.id}`);
+                            }}
+                          >
+                            View Details
+                          </Button>
+                        </div>
+                      </Card>
                     </div>
-                  ))
-                )}
-              </div>
+                  ))}
+                </div>
+              )
             )}
           </div>
         </section>
       )}
 
       {/* How It Works */}
-      <section className="px-4 py-16 border-t border-border bg-card/30">
+      <section className="px-4 sm:px-6 py-12 sm:py-16 border-t border-border bg-card/30">
         <div className="max-w-6xl mx-auto">
-          <h2 className="text-center mb-12" style={{ fontSize: '1.75rem', fontWeight: 600, color: 'var(--text-primary)' }}>
-            How It Works
+          <h2 className="text-center mb-8 sm:mb-12 text-xl sm:text-2xl" style={{ fontWeight: 600, color: 'var(--text-primary)' }}>
+            How it works
           </h2>
-          
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 sm:gap-6">
             {steps.map((step, index) => (
               <div key={step.number} className="relative">
                 <Card className="p-6 bg-card border-border text-center h-full">
@@ -339,12 +399,12 @@ export function HomePage({ onGetStarted }: HomePageProps) {
       </section>
 
       {/* Features */}
-      <section className="px-4 py-16">
+      <section className="px-4 sm:px-6 py-12 sm:py-16">
         <div className="max-w-6xl mx-auto">
-          <h2 className="text-center mb-4" style={{ fontSize: '1.75rem', fontWeight: 600, color: 'var(--text-primary)' }}>
+          <h2 className="text-center mb-4 text-xl sm:text-2xl" style={{ fontWeight: 600, color: 'var(--text-primary)' }}>
             Open Infrastructure for verifiable physical data
           </h2>
-          <p className="text-center mb-12 max-w-2xl mx-auto" style={{ color: 'var(--text-secondary)' }}>
+          <p className="text-center mb-8 sm:mb-12 max-w-2xl mx-auto text-sm sm:text-base" style={{ color: 'var(--text-secondary)' }}>
             Sparked Sense bridges IoT devices, decentralized networks, and open environmental intelligence systems
           </p>
           
@@ -367,13 +427,13 @@ export function HomePage({ onGetStarted }: HomePageProps) {
       </section>
 
       {/* Research Foundation */}
-      <section className="px-4 py-16 border-t border-border bg-card/30">
+      <section className="px-4 sm:px-6 py-12 sm:py-16 border-t border-border bg-card/30">
         <div className="max-w-6xl mx-auto">
-          <div className="text-center mb-12">
-            <h2 className="mb-3" style={{ fontSize: '1.75rem', fontWeight: 600, color: 'var(--text-primary)' }}>
-              <span style={{ color: 'var(--text-muted)' }}>//</span> Research Foundation
+          <div className="text-center mb-8 sm:mb-12">
+            <h2 className="mb-3 text-xl sm:text-2xl" style={{ fontWeight: 600, color: 'var(--text-primary)' }}>
+              <span style={{ color: 'var(--text-muted)' }}>//</span> Research foundation
             </h2>
-            <p style={{ color: 'var(--text-secondary)' }}>
+            <p className="text-sm sm:text-base" style={{ color: 'var(--text-secondary)' }}>
               Built on rigorous academic research and scientific validation
             </p>
           </div>
@@ -387,7 +447,7 @@ export function HomePage({ onGetStarted }: HomePageProps) {
                 </div>
                 <div>
                   <h3 className="mb-1" style={{ fontWeight: 600, color: 'var(--text-primary)' }}>
-                    Academic Partners
+                    Academic partners
                   </h3>
                   <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
                     Collaboration with leading research institutions worldwide
@@ -403,7 +463,7 @@ export function HomePage({ onGetStarted }: HomePageProps) {
                 </div>
                 <div>
                   <h3 className="mb-1" style={{ fontWeight: 600, color: 'var(--text-primary)' }}>
-                    Peer-Reviewed
+                    Peer-reviewed
                   </h3>
                   <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
                     Research papers published in blockchain and IoT conferences
@@ -419,7 +479,7 @@ export function HomePage({ onGetStarted }: HomePageProps) {
                 </div>
                 <div>
                   <h3 className="mb-1" style={{ fontWeight: 600, color: 'var(--text-primary)' }}>
-                    Open Science
+                    Open science
                   </h3>
                   <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
                     Transparent methodology and reproducible results
@@ -432,17 +492,17 @@ export function HomePage({ onGetStarted }: HomePageProps) {
           {/* Research Partnerships */}
           <Card className="p-6 bg-card border-border mb-8">
             <h3 className="mb-4" style={{ fontWeight: 600, color: 'var(--text-primary)' }}>
-              Research Partnerships
+              Research partnerships
             </h3>
             <p className="text-sm mb-6" style={{ color: 'var(--text-secondary)' }}>
               Partnerships under discussion to expand scientific development and sensor coverage
             </p>
             
             <div className="space-y-4">
-              <div className="flex items-center justify-between p-4 rounded-lg bg-muted/30 border border-border">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-4 rounded-lg bg-muted/30 border border-border">
                 <div className="flex-1">
                   <h4 style={{ fontWeight: 500, color: 'var(--text-primary)' }}>
-                    University Labs
+                    University labs
                   </h4>
                   <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
                     Expanding scientific development behind the infrastructure
@@ -453,10 +513,10 @@ export function HomePage({ onGetStarted }: HomePageProps) {
                 </Badge>
               </div>
 
-              <div className="flex items-center justify-between p-4 rounded-lg bg-muted/30 border border-border">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-4 rounded-lg bg-muted/30 border border-border">
                 <div className="flex-1">
                   <h4 style={{ fontWeight: 500, color: 'var(--text-primary)' }}>
-                    IoT Developers
+                    IoT developers
                   </h4>
                   <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
                     Sensor coverage validation and use case development
@@ -467,10 +527,10 @@ export function HomePage({ onGetStarted }: HomePageProps) {
                 </Badge>
               </div>
 
-              <div className="flex items-center justify-between p-4 rounded-lg bg-muted/30 border border-border">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-4 rounded-lg bg-muted/30 border border-border">
                 <div className="flex-1">
                   <h4 style={{ fontWeight: 500, color: 'var(--text-primary)' }}>
-                    DePIN Ecosystem
+                    DePIN ecosystem
                   </h4>
                   <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
                     Integration with decentralized physical infrastructure networks
@@ -486,7 +546,7 @@ export function HomePage({ onGetStarted }: HomePageProps) {
           {/* Scientific Advisors */}
           <div className="mb-4">
             <h3 className="mb-6" style={{ fontWeight: 600, color: 'var(--text-primary)' }}>
-              Scientific Advisors
+              Scientific advisors
             </h3>
           </div>
 
@@ -502,7 +562,7 @@ export function HomePage({ onGetStarted }: HomePageProps) {
                     Prof. Dr. Eduardo Zancul
                   </h3>
                   <p className="text-sm mb-2" style={{ color: 'var(--text-secondary)' }}>
-                    Scientific Advisor
+                    Scientific advisor
                   </p>
                 </div>
               </div>
@@ -530,7 +590,7 @@ export function HomePage({ onGetStarted }: HomePageProps) {
                     Otávio Vacari
                   </h3>
                   <p className="text-sm mb-2" style={{ color: 'var(--text-secondary)' }}>
-                    Technical Advisor
+                    Technical advisor
                   </p>
                 </div>
               </div>
@@ -548,13 +608,13 @@ export function HomePage({ onGetStarted }: HomePageProps) {
       </section>
 
       {/* Core Team */}
-      <section className="px-4 py-16 border-t border-border">
+      <section className="px-4 sm:px-6 py-12 sm:py-16 border-t border-border">
         <div className="max-w-6xl mx-auto">
-          <div className="text-center mb-12">
-            <h2 className="mb-3" style={{ fontSize: '1.75rem', fontWeight: 600, color: 'var(--text-primary)' }}>
-              <span style={{ color: 'var(--text-muted)' }}>//</span> Core Team
+          <div className="text-center mb-8 sm:mb-12">
+            <h2 className="mb-3 text-xl sm:text-2xl" style={{ fontWeight: 600, color: 'var(--text-primary)' }}>
+              <span style={{ color: 'var(--text-muted)' }}>//</span> Core team
             </h2>
-            <p style={{ color: 'var(--text-secondary)' }}>
+            <p className="text-sm sm:text-base" style={{ color: 'var(--text-secondary)' }}>
               Experienced builders combining academic rigor with industry expertise
             </p>
           </div>
@@ -570,7 +630,7 @@ export function HomePage({ onGetStarted }: HomePageProps) {
                   Vinicio Mendes
                 </h3>
                 <p className="text-sm mb-3" style={{ color: 'var(--primary)' }}>
-                  Project Creator & Product Lead
+                  Project creator & product lead
                 </p>
                 <p className="text-sm mb-4" style={{ color: 'var(--text-secondary)', lineHeight: '1.5' }}>
                   Production Engineering (POLI-USP) • Ex-Founder 2 educational startups • 3+ years product development experience
@@ -605,7 +665,7 @@ export function HomePage({ onGetStarted }: HomePageProps) {
                   Nicolas Gabriel
                 </h3>
                 <p className="text-sm mb-3" style={{ color: 'var(--primary)' }}>
-                  Project Creator & Development Lead
+                  Project creator & development lead
                 </p>
                 <p className="text-sm mb-4" style={{ color: 'var(--text-secondary)', lineHeight: '1.5' }}>
                   Computer Engineering (UFMT) • Ex-Founder 2 educational startups • Mid-Level Full-Stack Developer
@@ -639,7 +699,7 @@ export function HomePage({ onGetStarted }: HomePageProps) {
                   Pedro Goularte
                 </h3>
                 <p className="text-sm mb-3" style={{ color: 'var(--primary)' }}>
-                  Project Creator & Infrastructure Lead
+                  Project creator & infrastructure lead
                 </p>
                 <p className="text-sm mb-4" style={{ color: 'var(--text-secondary)', lineHeight: '1.5' }}>
                   Computer Engineering (POLI-USP) • Specialized in decentralized infrastructure
@@ -674,7 +734,7 @@ export function HomePage({ onGetStarted }: HomePageProps) {
                   Paulo Ricardo
                 </h3>
                 <p className="text-sm mb-3" style={{ color: 'var(--primary)' }}>
-                  Project Creator & Communication Lead
+                  Project creator & communication lead
                 </p>
                 <p className="text-sm mb-4" style={{ color: 'var(--text-secondary)', lineHeight: '1.5' }}>
                   Production Engineer (UFJF), specialized in project and product management, and institutional communication
@@ -703,12 +763,12 @@ export function HomePage({ onGetStarted }: HomePageProps) {
       </section>
 
       {/* CTA */}
-      <section className="px-4 py-16 border-t border-border bg-card/30">
+      <section className="px-4 sm:px-6 py-12 sm:py-16 border-t border-border bg-card/30">
         <div className="max-w-4xl mx-auto text-center">
-          <h2 className="mb-4" style={{ fontSize: '1.75rem', fontWeight: 600, color: 'var(--text-primary)' }}>
-            Ready to Get Started?
+          <h2 className="mb-4 text-xl sm:text-2xl" style={{ fontWeight: 600, color: 'var(--text-primary)' }}>
+            Ready to get started?
           </h2>
-          <p className="mb-8" style={{ color: 'var(--text-secondary)' }}>
+          <p className="mb-8 text-sm sm:text-base" style={{ color: 'var(--text-secondary)' }}>
             Connect your wallet and register your first sensor in minutes
           </p>
           <Button 
@@ -716,7 +776,7 @@ export function HomePage({ onGetStarted }: HomePageProps) {
             size="lg"
             className="bg-primary text-primary-foreground"
           >
-            Get Started
+            Get started
           </Button>
         </div>
       </section>
