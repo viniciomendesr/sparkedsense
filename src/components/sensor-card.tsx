@@ -2,9 +2,10 @@ import { Sensor } from '../lib/types';
 import { Card } from './ui/card';
 import { Badge } from './ui/badge';
 import { Button } from './ui/button';
-import { Activity, Eye, EyeOff, Lock, AlertCircle, Calendar, Clock, Hexagon, MapPin } from 'lucide-react';
+import { Activity, Eye, EyeOff, Lock, AlertCircle, Calendar, Clock, Hexagon, MapPin, Database, Hash } from 'lucide-react';
 import { ImageWithFallback } from './figma/ImageWithFallback';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from './ui/tooltip';
+import { formatDataSize } from '../lib/format';
 
 interface SensorCardProps {
   sensor: Sensor;
@@ -191,6 +192,30 @@ export function SensorCard({ sensor, liveData, onViewDetails, showMiniSparkline 
           </div>
         )}
 
+        {/* Storage Metrics */}
+        {(sensor.totalReadingsCount ?? 0) > 0 && (
+          <div className="grid grid-cols-2 gap-3 mb-4">
+            <div className="p-3 rounded-lg bg-primary/5 border border-primary/10 text-center">
+              <div className="flex items-center justify-center gap-1.5 mb-1">
+                <Database className="w-3 h-3 text-primary/60" />
+                <span className="text-xs uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>Stored</span>
+              </div>
+              <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
+                {formatDataSize(sensor.totalDataBytes ?? 0)}
+              </p>
+            </div>
+            <div className="p-3 rounded-lg bg-primary/5 border border-primary/10 text-center">
+              <div className="flex items-center justify-center gap-1.5 mb-1">
+                <Hash className="w-3 h-3 text-primary/60" />
+                <span className="text-xs uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>Readings</span>
+              </div>
+              <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
+                {(sensor.totalReadingsCount ?? 0).toLocaleString()}
+              </p>
+            </div>
+          </div>
+        )}
+
         {/* Mini Sparkline */}
         {showMiniSparkline && liveData && liveData.length > 1 && (
           <div className="h-12 relative mb-4">
@@ -214,7 +239,7 @@ export function SensorCard({ sensor, liveData, onViewDetails, showMiniSparkline 
         )}
 
         {/* Actions */}
-        <Button 
+        <Button
           onClick={() => onViewDetails(sensor)}
           className="w-full bg-primary text-primary-foreground"
         >
