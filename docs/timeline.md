@@ -237,6 +237,21 @@ Format inspired by [Keep a Changelog](https://keepachangelog.com/).
 
 ---
 
+## Phase 11 — Frontend styling polish and sentence case (20 Mar 2026)
+
+**Contributor:** Vinicio Mendes (with AI assistance — Claude)
+
+### Changed (frontend)
+- **SensorCard:** centered Stored/Readings metrics in their boxes; added `formatDataSize` utility (`src/lib/format.ts`) for human-readable byte formatting
+- **Home page featured sensors:** redesigned section with responsive grid layout (1-col mobile, 2-col tablet, 3-col desktop), ready for multiple sensors; replaced inline Tailwind v4 responsive classes with plain CSS `@media` queries to work around specificity issues
+- **Public sensors page:** tightened header padding, added sensor count badge, adaptive grid layout based on sensor count (centered single sensor, 2-col for 2, 3-col for 3+), subtler info card styling
+- **Sentence case:** converted ~30 UI strings across home, public sensors, and sensor card from Title Case to sentence case (e.g., "Featured Public Sensors" → "Featured public sensors", "View Details" → "View details")
+
+### Fixed
+- Tailwind CSS v4 specificity bug: `flex-col md:flex-row` and `grid-cols-3` responsive variants lost specificity in generated CSS — workaround uses `.featured-spotlight` and `.featured-metrics` CSS classes with `@media` queries
+
+---
+
 ## Current status
 
 **Implemented:** End-to-end DePIN flow with secp256k1 cryptographic authentication, simulated digital identity (nftAddress), real-time dashboard with automatic polling for real sensors, binary Merkle tree with inclusion proofs for dataset integrity verification (client-side and server-side), PostgreSQL as canonical storage for sensor readings (KV store retained only for sensor metadata and datasets), Solana devnet wallet under project control, homepage with Featured Public Sensors, WiFi-based geolocation endpoint (pending provider with Brazil coverage). Structured documentation with ADR index and timeline in `docs/`.
