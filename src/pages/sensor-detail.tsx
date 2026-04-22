@@ -604,10 +604,6 @@ export function SensorDetailPage({
             <Activity className="w-4 h-4 mr-2" />
             Live Stream
           </TabsTrigger>
-          <TabsTrigger value="historical" className="data-[state=active]:bg-card">
-            <Clock className="w-4 h-4 mr-2" />
-            Historical
-          </TabsTrigger>
           <TabsTrigger value="datasets" className="data-[state=active]:bg-card">
             <Database className="w-4 h-4 mr-2" />
             Datasets ({datasets.length})
@@ -653,6 +649,20 @@ export function SensorDetailPage({
             mode="live"
             title="Live Data"
             unit={readings[0]?.unit || sensor.lastReading?.unit || ''}
+          />
+
+          {/* Historical Data Feed */}
+          <div className="flex items-center gap-3 pt-2">
+            <Clock className="w-5 h-5 text-primary" />
+            <h2 style={{ fontSize: '1.25rem', fontWeight: 600, color: 'var(--text-primary)' }}>
+              Historical Data Feed
+            </h2>
+          </div>
+          <SensorChart
+            readings={historicalReadings}
+            mode="historical"
+            title="Historical Data"
+            unit={historicalReadings[0]?.unit || sensor.lastReading?.unit || ''}
           />
 
           {/* Recent Readings Table */}
@@ -821,16 +831,6 @@ export function SensorDetailPage({
               </div>
             </div>
           </Card>
-        </TabsContent>
-
-        {/* Historical Tab */}
-        <TabsContent value="historical" className="space-y-6">
-          <SensorChart
-            readings={historicalReadings}
-            mode="historical"
-            title="Historical Data"
-            unit={historicalReadings[0]?.unit || sensor.lastReading?.unit || ''}
-          />
         </TabsContent>
 
         {/* Datasets Tab */}

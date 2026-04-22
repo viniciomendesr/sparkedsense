@@ -1878,10 +1878,17 @@ app.post("/server/reading", async (c) => {
       return c.json({ error: 'Rate limited — wait before sending another reading', code: 'rate_limited' }, 429);
     }
 
-    // Verify signature
-    const validSig = await verifyEnvelopeSignature(envelope, device.public_key);
-    if (!validSig) {
-      return c.json({ error: 'Invalid signature', code: 'bad_signature' }, 401);
+    // Verify signature — ADR-011 allows a time-limited bypass for Node 2 (ESP32-S3)
+    // whose signing pipeline is not yet ported. Device identity is still enforced via
+    // the `source` → public_key lookup above. Remove after the port lands.
+    if (envelope.signature === 'unsigned_dev') {
+      // TODO(ADR-011): remove after ESP32-S3 signing pipeline is ported.
+      console.warn(`⚠️  Accepting unsigned event from ${envelope.source} (ADR-011 bypass)`);
+    } else {
+      const validSig = await verifyEnvelopeSignature(envelope, device.public_key);
+      if (!validSig) {
+        return c.json({ error: 'Invalid signature', code: 'bad_signature' }, 401);
+      }
     }
 
     // Validate typed payload for platform-blessed types; custom types pass through

@@ -145,8 +145,11 @@ export const validateEnvelopeShape = (body: unknown): { envelope: Envelope | nul
   if (typeof body.datacontenttype !== "string" || body.datacontenttype.length === 0) {
     return { envelope: null, error: err("envelope_bad_datacontenttype", "datacontenttype is required") };
   }
-  if (typeof body.signature !== "string" || !/^[0-9a-fA-F]+$/.test(body.signature)) {
-    return { envelope: null, error: err("envelope_bad_signature", "signature must be a hex-encoded string") };
+  // `unsigned_dev` is the ADR-011 bypass marker for Node 2 during the 2026-04-24
+  // demo window. Shape check lets it through; the POST /reading handler decides
+  // whether to actually skip signature verification. TODO(ADR-011).
+  if (typeof body.signature !== "string" || (body.signature !== "unsigned_dev" && !/^[0-9a-fA-F]+$/.test(body.signature))) {
+    return { envelope: null, error: err("envelope_bad_signature", "signature must be a hex-encoded string or the ADR-011 bypass marker") };
   }
 
   return { envelope: body as unknown as Envelope, error: null };
