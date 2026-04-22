@@ -56,6 +56,7 @@ The file `docs/timeline.md` tracks project milestones and progress using **chang
 
 - **No AI authorship in commits.** Never include "Co-Authored-By: Claude" or similar attribution in commit messages. AI usage is disclosed in the README and in academic methodology, not in git history.
 - **Check other worktrees before starting.** Other git worktrees may be open with in-progress work. Before making changes, review existing worktrees (`git worktree list`) to avoid conflicts, duplicated effort, or overwriting parallel work.
+- **Worktree naming.** Never use auto-generated random names (e.g. `funny-leavitt-f4d868`, `great-leakey`) for worktrees. Create worktrees with descriptive names that follow the same prefix convention as branches: `feat/`, `fix/`, `docs/`, `chore/`, `refactor/`, `test/`. Path format: `.claude/worktrees/<prefix>-<short-name>` (e.g. `.claude/worktrees/feat-merkle-anchor`, `.claude/worktrees/fix-sparkline`). When Claude Code offers to create a worktree with an auto-generated name, decline and create it manually: `git worktree add .claude/worktrees/<prefix>-<short-name> -b <prefix>/<short-name>`. Clean up worktrees after the related PR is merged.
 - **After every merge or PR:** update the timeline (`docs/timeline.md`) with what was delivered, and update or create any ADRs affected by the changes. If a merge supersedes a previous decision, write a new ADR referencing the old one rather than editing it.
 
 ## Architecture Decision Records
