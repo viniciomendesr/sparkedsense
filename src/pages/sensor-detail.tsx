@@ -47,6 +47,7 @@ import { readingAPI, datasetAPI, merkleAPI, sensorAPI } from '../lib/api';
 import { supabase } from '../utils/supabase/client';
 import { toast } from 'sonner@2.0.3';
 import { verifyMerkleRoot } from '../lib/merkle';
+import { formatDataSize } from '../lib/format';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { EditSensorDialog } from '../components/edit-sensor-dialog';
 
@@ -496,12 +497,18 @@ export function SensorDetailPage({
                 )}
               </div>
             )}
-            {readings.length > 0 && (
-              <div className="flex items-center gap-1.5 mb-3">
-                <Database className="w-4 h-4 text-muted-foreground shrink-0" />
-                <span className="text-sm" style={{ color: 'var(--text-secondary)' }}>
-                  {(datasets.reduce((sum, d) => sum + (d.readingsCount || 0), 0) + readings.length).toLocaleString()} readings processed
-                </span>
+            {(sensor.totalReadingsCount ?? 0) > 0 && (
+              <div className="flex items-center gap-4 mb-3 text-sm" style={{ color: 'var(--text-secondary)' }}>
+                <div className="flex items-center gap-1.5">
+                  <Database className="w-4 h-4 text-muted-foreground shrink-0" />
+                  <span>{(sensor.totalReadingsCount ?? 0).toLocaleString()} readings processed</span>
+                </div>
+                {(sensor.totalDataBytes ?? 0) > 0 && (
+                  <div className="flex items-center gap-1.5">
+                    <Database className="w-4 h-4 text-muted-foreground shrink-0" />
+                    <span>{formatDataSize(sensor.totalDataBytes ?? 0)} stored</span>
+                  </div>
+                )}
               </div>
             )}
             <div className="flex items-center gap-2 mb-3">

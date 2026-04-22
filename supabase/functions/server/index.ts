@@ -459,12 +459,15 @@ app.get("/server/sensors/:id", async (c) => {
       console.error('Failed to compute datasets for sensor:', id, datasetError);
     }
 
+    const totalReadingsCount = await countSensorReadings(id, sensor);
+
     return c.json({
       sensor: {
         ...sensor,
         hourlyMerkleRoot,
         totalVerified,
-        totalReadings: readings.length
+        totalReadingsCount,
+        totalDataBytes: totalReadingsCount * AVG_READING_BYTES,
       }
     });
   } catch (error) {

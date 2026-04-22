@@ -208,6 +208,12 @@ export function PublicSensorDetailPage({
     return dateObj.toLocaleDateString();
   };
 
+  const formatDateTime = (date: Date | string | undefined) => {
+    if (!date) return 'N/A';
+    const dateObj = typeof date === 'string' ? new Date(date) : date;
+    return `${dateObj.toLocaleDateString()} ${dateObj.toLocaleTimeString()}`;
+  };
+
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
       {/* Header */}
@@ -304,7 +310,7 @@ export function PublicSensorDetailPage({
                     </span>
                   </div>
                   <p className="text-sm" style={{ fontWeight: 500, color: 'var(--text-primary)' }}>
-                    {formatDate(sensor.createdAt)}
+                    {formatDateTime(sensor.createdAt)}
                   </p>
                 </div>
                 <div>
@@ -315,7 +321,7 @@ export function PublicSensorDetailPage({
                     </span>
                   </div>
                   <p className="text-sm" style={{ fontWeight: 500, color: 'var(--text-primary)' }}>
-                    {formatDate(sensor.updatedAt || sensor.createdAt)}
+                    {formatDateTime(sensor.updatedAt || sensor.createdAt)}
                   </p>
                 </div>
                 {sensor.lastReading && (
