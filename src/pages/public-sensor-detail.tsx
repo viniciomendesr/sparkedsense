@@ -321,7 +321,15 @@ export function PublicSensorDetailPage({
                     </span>
                   </div>
                   <p className="text-sm" style={{ fontWeight: 500, color: 'var(--text-primary)' }}>
-                    {formatDateTime(sensor.updatedAt || sensor.createdAt)}
+                    {formatDateTime(
+                      readings.reduce<Date | undefined>((latest, r) => {
+                        const t = r.timestamp instanceof Date ? r.timestamp : new Date(r.timestamp);
+                        return !latest || t > latest ? t : latest;
+                      }, undefined) ||
+                        sensor.lastReading?.timestamp ||
+                        sensor.updatedAt ||
+                        sensor.createdAt,
+                    )}
                   </p>
                 </div>
                 {sensor.lastReading && (
