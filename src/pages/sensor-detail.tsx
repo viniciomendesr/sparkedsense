@@ -37,7 +37,8 @@ import {
   Loader2,
   Settings,
   Eye,
-  MapPin
+  MapPin,
+  Pencil
 } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { useAuth } from '../lib/auth-context';
@@ -46,6 +47,7 @@ import { supabase } from '../utils/supabase/client';
 import { toast } from 'sonner@2.0.3';
 import { verifyMerkleRoot } from '../lib/merkle';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
+import { EditSensorDialog } from '../components/edit-sensor-dialog';
 
 interface SensorDetailPageProps {
   sensor: Sensor;
@@ -77,6 +79,11 @@ export function SensorDetailPage({
   const [deleteSensorDialogOpen, setDeleteSensorDialogOpen] = useState(false);
   const [isDeletingSensor, setIsDeletingSensor] = useState(false);
   const [sensorVisibility, setSensorVisibility] = useState(sensor.visibility);
+  const [editSensorDialogOpen, setEditSensorDialogOpen] = useState(false);
+  const [sensorName, setSensorName] = useState(sensor.name);
+  const [sensorDescription, setSensorDescription] = useState(sensor.description);
+
+  const isOwner = !!user && user.id === sensor.owner;
 
   // Load initial data
   useEffect(() => {
@@ -428,11 +435,25 @@ export function SensorDetailPage({
 
         <div className="flex items-start justify-between">
           <div className="flex-1">
-            <h1 className="mb-2" style={{ fontSize: '1.75rem', fontWeight: 600, color: 'var(--text-primary)' }}>
-              {sensor.name}
-            </h1>
+            <div className="flex items-center gap-2 mb-2">
+              <h1 style={{ fontSize: '1.75rem', fontWeight: 600, color: 'var(--text-primary)' }}>
+                {sensorName}
+              </h1>
+              {isOwner && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-8 w-8 p-0 text-muted-foreground hover:text-foreground"
+                  onClick={() => setEditSensorDialogOpen(true)}
+                  aria-label="Edit sensor"
+                  title="Edit sensor"
+                >
+                  <Pencil className="w-4 h-4" />
+                </Button>
+              )}
+            </div>
             <p className="mb-3" style={{ color: 'var(--text-secondary)' }}>
-              {sensor.description}
+              {sensorDescription}
             </p>
             {sensor.location && (
               <div className="flex items-center gap-1.5 mb-3">
@@ -1108,6 +1129,17 @@ export function SensorDetailPage({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Edit Sensor Dialog */}
+      <EditSensorDialog
+        open={editSensorDialogOpen}
+        onOpenChange={setEditSensorDialogOpen}
+        sensor={{ ...sensor, name: sensorName, description: sensorDescription }}
+        onSaved={(updated) => {
+          setSensorName(updated.name);
+          setSensorDescription(updated.description);
+        }}
+      />
     </div>
   );
 }

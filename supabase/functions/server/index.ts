@@ -546,6 +546,11 @@ app.post("/server/sensors", async (c) => {
   }
 });
 
+// Fields a user may change via PUT /sensors/:id.
+// location/latitude/longitude/locationAccuracy come from the device firmware and
+// must never be mutable by the user — changing them would break the DePIN trust model.
+const USER_EDITABLE_SENSOR_FIELDS = ['name', 'description', 'visibility'] as const;
+
 app.put("/server/sensors/:id", async (c) => {
   try {
     const user = await getUserFromToken(c.req.raw);
@@ -554,20 +559,25 @@ app.put("/server/sensors/:id", async (c) => {
     }
 
     const id = c.req.param('id');
-    const updates = await c.req.json();
-    
+    const body = await c.req.json();
+
+    const updates: Record<string, unknown> = {};
+    for (const key of USER_EDITABLE_SENSOR_FIELDS) {
+      if (key in body) updates[key] = body[key];
+    }
+
     const existing = await kv.get(`sensor:${user.id}:${id}`);
     if (!existing) {
       return c.json({ error: 'Sensor not found' }, 404);
     }
 
-    const sensor = { 
-      ...existing, 
+    const sensor = {
+      ...existing,
       ...updates,
       updatedAt: new Date().toISOString(),
     };
     await kv.set(`sensor:${user.id}:${id}`, sensor);
-    
+
     return c.json({ sensor });
   } catch (error) {
     console.error('Failed to update sensor:', error);
