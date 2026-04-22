@@ -252,6 +252,27 @@ Format inspired by [Keep a Changelog](https://keepachangelog.com/).
 
 ---
 
+## Phase 12 — README rewrite to reflect current stack and features (22 Apr 2026)
+
+**Contributor:** Vinicio Mendes (with AI assistance — Claude)
+
+### Changed
+- `README.md` rewritten to match current state of the project after Phases 8–11:
+  - Stack corrected from "Next.js + Tailwind" to Vite + React + TypeScript (Next.js code was moved to `_reference/` back in Phase 4)
+  - Framing broadened from environmental-data product to hardware-agnostic DePIN infrastructure platform (aligned with `CLAUDE.md`), mentioning retail analytics / TinyML as an example application being built on top
+  - Added sections for binary Merkle tree with client-side inclusion proofs (Phase 8) and WiFi-based geolocation via Apple WiFi DB / Cloudflare Worker (Phase 10)
+  - Public API table rebuilt with the real endpoints exposed by the Edge Function today (including `/public/sensors/:sensorId/merkle-proof/:leafIndex`, `/server/device-location`, `/verify/merkle`)
+  - Storage description corrected: "In-memory Redis-like layer" replaced by Supabase KV table (`kv_store_4a89e1c9`) used only for sensor metadata and datasets; readings live in PostgreSQL (Phase 10)
+  - Added references to `docs/timeline.md`, `docs/adr/`, and `CLAUDE.md`
+
+### Fixed
+- Broken documentation links removed: `BACKEND_INTEGRATION_GUIDE.md` and `API_QUICK_REFERENCE.md` (did not exist)
+- Placeholder URLs replaced: `github.com/your-username/SparkedSense.git` → `github.com/viniciomendesr/sparkedsense.git`
+
+> PR [sparkedsense#10](https://github.com/viniciomendesr/sparkedsense/pull/10) — squash merged into `main` (`f0d60e6`)
+
+---
+
 ## Current status
 
 **Implemented:** End-to-end DePIN flow with secp256k1 cryptographic authentication, simulated digital identity (nftAddress), real-time dashboard with automatic polling for real sensors, binary Merkle tree with inclusion proofs for dataset integrity verification (client-side and server-side), PostgreSQL as canonical storage for sensor readings (KV store retained only for sensor metadata and datasets), Solana devnet wallet under project control, homepage with Featured Public Sensors, WiFi-based geolocation endpoint (pending provider with Brazil coverage). Structured documentation with ADR index and timeline in `docs/`.
