@@ -294,14 +294,14 @@ Format inspired by [Keep a Changelog](https://keepachangelog.com/).
 - The author's concurrent undergraduate research (heterogeneous Edge AI inference aggregation) composes on top of this layer without blurring platform vs. research boundaries.
 
 ### Status
-- [ ] ADR written and merged, status **Accepted** (this phase marks the transition from Proposed).
-- [ ] `docs/event-types/` with JSON Schemas for the nine platform-blessed types.
-- [ ] Migration creating `readings` table + `sensor_readings_compat` view.
-- [ ] Backend `POST /reading` with envelope validation + signature verification.
-- [ ] Backend adapter on `POST /sensor-data` delegating to `POST /reading`.
-- [ ] Frontend type-dispatched renderer framework + three initial renderers.
-- [ ] Page `/demo-claro` consuming the new renderers.
-- [ ] ESP32-S3 acoustic client emits envelopes; MacBook whisper gateway emits envelopes.
+- [x] ADR written and merged, status **Accepted** (this phase marks the transition from Proposed).
+- [x] `docs/event-types/` with JSON Schemas for eight platform-blessed types (`sensor.environmental`, `sensor.generic`, `inference.classification`, `inference.regression`, `inference.detection`, `inference.transcription`, `inference.semantic_summary`, `raw.audio`).
+- [x] Migration `003_readings_envelope.sql` creating `readings` table + `sensor_readings_compat` view.
+- [x] Backend `POST /reading` with envelope shape validation, secp256k1 verification over canonical JSON (recursive key sort), and lightweight typed-payload validation.
+- [x] Backend adapter: `POST /sensor-data` dual-writes SenML envelopes into `readings` so the live DHT11 enters the new feed without a firmware change.
+- [x] Frontend type-dispatched renderer framework in `src/components/renderers/` (environmental SenML, classification, transcription, generic fallback).
+- [x] Page `/demo-claro` consuming the new `/public/readings-v2/:sensorId` feed; verified end-to-end with real hardware (11 envelopes rendered live from the production DHT11).
+- [ ] ESP32-S3 acoustic client emits envelopes directly (not wrapped); MacBook whisper gateway emits envelopes — pending firmware/client code for the demo.
 
 > Implementation order and risks documented in [ADR-010](adr/010-sensor-agnostic-ingestion-envelope.md). This phase is intentionally open until the demo stabilizes, at which point items 8–9 of the ADR's implementation order (deprecation window, quickstart documentation) move to Phase 14.
 
