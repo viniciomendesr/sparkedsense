@@ -1,27 +1,31 @@
 # Sparked Sense
 
-> **An open infrastructure connecting Arduino-powered IoT devices, Supabase, and the Solana blockchain — enabling verifiable, auditable, and real-time environmental data.**
+> **Open-source DePIN infrastructure for commodity IoT hardware — connecting off-the-shelf microcontrollers to off-chain storage and on-chain verification.**
 
 ## Overview
 
-**Sparked Sense** bridges **IoT**, **blockchain**, and **open data** to create a decentralized trust layer for physical-world information.
+**Sparked Sense** is a hardware-agnostic platform that lets anyone participate in a decentralized physical infrastructure network using generic microcontrollers (ESP8266, ESP32, Arduino-compatible boards) — no proprietary devices required.
 
-The system allows anyone to connect IoT devices (Arduino or ESP boards), stream environmental readings in real time, anchor datasets on Solana for verification, and share public proofs of authenticity.
+The platform handles device identity (secp256k1 key pairs), data ingestion, cryptographic verification, dataset aggregation, Merkle proofs, and blockchain anchoring. It is **sensor-agnostic** (temperature, humidity, audio, image, foot traffic, or any future data source) and **vertical-agnostic** (smart cities, retail analytics, agriculture, environmental monitoring, logistics).
 
-🔗 **Live MVP:** [sparkedsensemvp.vercel.app](https://sparkedsensemvp.vercel.app/)  
+Applications being built on top of Sparked Sense include **retail/customer analytics** (edge devices in malls and stores for foot traffic inference via TinyML) and **environmental sensing** (the live MVP below). The platform layer remains the same.
+
+🔗 **Live MVP:** [sparkedsensemvp.vercel.app](https://sparkedsensemvp.vercel.app/)
 🐦 **Follow updates:** [@sparkedsense](https://x.com/sparkedsense)
 
 ---
 
 ## Key Features
 
-- **IoT Integration:** Register and link real Arduino-based devices or mock sensors  
-- **Real-Time Readings:** Stream environmental variables (temperature, humidity, pH, etc.)  
-- **On-Chain Verification:** Anchor datasets to Solana using Merkle proofs  
-- **Supabase-Driven Backend:** Edge Functions, real-time Postgres, and RLS security  
-- **Public Data Access:** Browse and verify datasets via transparent audit pages  
-- **Web3 Identity:** Solana wallet integration for ownership and authentication  
-- **Open Source Stack:** Everything — firmware, backend, frontend — is open and reproducible  
+- **Commodity hardware first** — ~R$15 ESP8266 is the baseline; any microcontroller with WiFi and a crypto library works
+- **Cryptographic device identity** — secp256k1 key pairs generated on-device, persisted in EEPROM
+- **Signed data ingestion** — every reading carries a signature verified on the backend before storage
+- **Binary Merkle tree with inclusion proofs** — client-side and server-side verification via Web Crypto API
+- **Real-time streaming** — Supabase Postgres CDC pushes readings to connected dashboards
+- **WiFi geolocation** — devices locate themselves via nearby AP scan (Apple WiFi DB via Cloudflare Worker), no GPS needed
+- **On-chain anchoring** — dataset Merkle roots anchored to Solana devnet
+- **Public audit pages** — anyone can verify dataset integrity without trusting the operator
+- **Fully open source** — firmware, backend, frontend, and infrastructure decisions documented in ADRs
 
 ---
 
@@ -29,23 +33,28 @@ The system allows anyone to connect IoT devices (Arduino or ESP boards), stream 
 
 ```text
 ┌───────────────────────────────────────────────────────────────┐
-│                       SPARKED SENSE SYSTEM                    │
+│                       SPARKED SENSE PLATFORM                  │
 ├───────────────────────────────────────────────────────────────┤
-│  FRONTEND: Next.js + Tailwind (User Dashboard)                │
-│     • Home / Dashboard / Sensors / Datasets / Audit Pages     │
+│  FRONTEND: Vite + React + TypeScript + Tailwind               │
+│     • Dashboard / Sensor detail / Public audit pages          │
+│     • Client-side Merkle proof verification                   │
 │                                                               │
-│  BACKEND: Supabase Edge Functions                             │
-│     • Authentication / Sensor Registry / Dataset Proofs       │
-│     • Real-time events via PostgreSQL CDC                     │
+│  BACKEND: Supabase Edge Functions (Hono + Deno)               │
+│     • Device registration (secp256k1 challenge-response)      │
+│     • Reading ingestion / signature verification              │
+│     • Merkle tree generation and inclusion proofs             │
+│                                                               │
+│  WIFI GEOLOCATION: Cloudflare Worker                          │
+│     • Apple WiFi DB reverse lookup from BSSID scan            │
 │                                                               │
 │  DATABASE: Supabase PostgreSQL                                │
-│     • users / devices / sensor_readings / datasets / logs     │
+│     • devices / sensor_readings (PG) / kv_store (metadata)    │
 │                                                               │
-│  BLOCKCHAIN: Solana                                           │
-│     • Merkle root anchoring & proof validation                │
+│  BLOCKCHAIN: Solana Devnet                                    │
+│     • Merkle root anchoring                                   │
 │                                                               │
-│  DEVICES: Arduino / ESP8266 / ESP32                           │
-│     • Send signed readings through REST API                   │
+│  DEVICES: ESP8266 / ESP32 / Arduino-compatible                │
+│     • secp256k1 signing, canonical JSON, HTTPS to Edge Fn     │
 └───────────────────────────────────────────────────────────────┘
 ```
 
@@ -55,48 +64,51 @@ The system allows anyone to connect IoT devices (Arduino or ESP boards), stream 
 
 | Layer | Technology | Purpose |
 |-------|-------------|----------|
-| **Frontend** | Next.js + TypeScript + TailwindCSS | User interface and dashboard |
-| **Backend** | Supabase Edge Functions (Hono) | API logic and validation |
-| **Database** | Supabase PostgreSQL | Storage, RLS, and event streaming |
-| **Blockchain** | Solana Devnet | Data anchoring and Merkle proofing |
-| **IoT Devices** | Arduino / ESP8266 / ESP32 | Real-world data input |
-| **Cache** | In-memory Redis-like layer | Optimized performance |
-| **Auth** | Supabase Auth + Solana Wallet Adapter | Identity and access control |
+| **Frontend** | Vite + React + TypeScript + Tailwind | Dashboard, audit pages, client-side verification |
+| **Backend** | Supabase Edge Functions (Hono + Deno) | API, signature verification, Merkle tree |
+| **Database** | Supabase PostgreSQL | Canonical storage for devices and readings |
+| **Metadata store** | Supabase KV table (`kv_store_4a89e1c9`) | Sensor metadata, datasets, aggregations |
+| **WiFi geolocation** | Cloudflare Worker + Apple WiFi DB | BSSID → coordinates |
+| **Blockchain** | Solana Devnet | Dataset Merkle root anchoring |
+| **IoT devices** | ESP8266 / ESP32 / Arduino-compatible | Signed reading transmission |
+| **Auth** | Supabase Auth + Solana Wallet Adapter | User identity and device ownership |
 
 ---
 
 ## Core Concepts
 
-### Real vs Mock Sensors
-- **Real sensors** transmit signed data directly from physical devices.  
-- **Mock sensors** generate synthetic readings for testing and frontend validation.
+### Device identity
+Each physical device generates a secp256k1 key pair at first boot and stores it in EEPROM. Registration uses a challenge-response protocol: the backend issues a challenge, the device signs it, the backend verifies the signature and binds the public key to a claim token.
 
-### Datasets
-- Datasets aggregate readings and include:
-  - Merkle Root hash
-  - Solana transaction ID
-  - Integrity proof
+### Signed readings
+Every reading is a canonical JSON payload signed with the device's private key. The backend rejects any payload whose signature does not verify against the registered public key.
 
-### Public Auditing
-- Public audit pages allow users to validate the authenticity of datasets.  
-- Hourly Merkle proofs confirm real-time data consistency.
+### Binary Merkle tree
+Readings are aggregated into datasets. The backend builds a binary Merkle tree (pairwise SHA-256 hashing, odd leaves duplicated, domain-separated leaf nodes) and exposes inclusion proofs. The root is anchored on Solana. Clients reconstruct and verify proofs in-browser via Web Crypto API — no trust in the server required.
+
+### Real vs mock sensors
+- **Real sensors** transmit signed payloads from physical devices.
+- **Mock sensors** generate synthetic readings for frontend testing and integration validation.
+
+### Public auditing
+Public audit pages let anyone fetch a dataset's Merkle root, pull any leaf's inclusion proof, and verify integrity locally. This is the core DePIN trust model: multiple parties trust the data without trusting whoever collected it.
 
 ---
 
-## Installation Guide
+## Installation
 
-### 1️⃣ Clone the Repository
+### 1. Clone the repository
 ```bash
-git clone https://github.com/your-username/SparkedSense.git
-cd SparkedSense
+git clone https://github.com/viniciomendesr/sparkedsense.git
+cd sparkedsense
 ```
 
-### 2️⃣ Install Dependencies
+### 2. Install dependencies
 ```bash
 pnpm install
 ```
 
-### 3️⃣ Configure Environment Variables
+### 3. Configure environment variables
 Create a `.env.local` file in the project root:
 
 ```bash
@@ -107,65 +119,56 @@ SOLANA_RPC_URL=https://api.devnet.solana.com
 SOLANA_PRIVATE_KEY=...
 ```
 
-### 4️⃣ Initialize Supabase Database
-Run the schema migration from:  
-[`/supabase/migrations/001_initial_schema.sql`](./supabase/migrations/001_initial_schema.sql)
+### 4. Initialize the Supabase database
+Run the migrations from [`supabase/migrations/`](./supabase/migrations/):
+- `001_initial_schema.sql`
+- `002_fix_schema_gaps.sql`
 
-### 5️⃣ Run Locally
+### 5. Run locally
 ```bash
 pnpm dev
 ```
+Dev server listens on port 3000.
 
 ---
 
-## 🔗 API Overview
+## Documentation
 
-Endpoints follow REST structure through Supabase Edge Functions.
-
-📘 Full details: [`BACKEND_INTEGRATION_GUIDE.md`](./BACKEND_INTEGRATION_GUIDE.md)  
-⚡ Quick summary: [`API_QUICK_REFERENCE.md`](./API_QUICK_REFERENCE.md)
-
-Example:
-```bash
-POST /sensors
-Authorization: Bearer TOKEN
-
-{
-  "name": "Temperature Sensor",
-  "type": "temperature",
-  "visibility": "public",
-  "mode": "real",
-  "claimToken": "CLAIM_123",
-  "walletPublicKey": "SolanaAddress..."
-}
-```
+- [`docs/timeline.md`](./docs/timeline.md) — chronological project history (Keep a Changelog format)
+- [`docs/adr/`](./docs/adr/) — Architecture Decision Records (Michael Nygard format)
+- [`CLAUDE.md`](./CLAUDE.md) — design intent and agent guidance
 
 ---
 
-## Public API Routes
+## Public API
+
+Endpoints are exposed through Supabase Edge Functions.
 
 | Endpoint | Method | Description |
 |-----------|--------|-------------|
-| `/public/sensors` | GET | List all public sensors |
-| `/public/sensors/:id` | GET | Get detailed sensor data |
-| `/public/readings/:id` | GET | Fetch live sensor readings |
-| `/public/datasets/:id` | GET | Retrieve dataset information |
-| `/public/sensors/:id/hourly-merkle` | GET | Get Merkle proof for last hour |
+| `/public/sensors` | GET | List public sensors |
+| `/public/sensors/:id` | GET | Sensor detail |
+| `/public/sensors/featured` | GET | Featured sensors for homepage |
+| `/public/sensors/:id/hourly-merkle` | GET | Merkle root + leaves for the last hour |
+| `/public/sensors/:sensorId/merkle-proof/:leafIndex` | GET | Inclusion proof for a specific leaf |
+| `/server/register-device` | POST | Two-step secp256k1 challenge-response registration |
+| `/server/sensor-data` | POST | Signed reading ingestion |
+| `/server/device-location` | POST | WiFi scan → geolocation lookup |
+| `/verify/merkle` | POST | Server-side Merkle proof verification |
 
 ---
 
-## Real-Time Data Flow
+## Real-time data flow
 
-1. Device sends signed JSON payload  
-2. Backend validates and saves it in `sensor_readings`  
-3. Supabase emits real-time change event  
-4. Frontend updates dashboard automatically  
+1. Device signs JSON payload with its secp256k1 private key
+2. Edge Function verifies the signature and writes to `sensor_readings` (PostgreSQL)
+3. Supabase emits a Postgres CDC event
+4. Frontend dashboards update automatically
 
-Example (frontend subscription):
 ```typescript
 supabase
   .channel('sensor-updates')
-  .on('postgres_changes', { event: '*', schema: 'public', table: 'sensor_readings' }, 
+  .on('postgres_changes', { event: '*', schema: 'public', table: 'sensor_readings' },
     (payload) => console.log('New reading:', payload)
   )
   .subscribe();
@@ -173,24 +176,13 @@ supabase
 
 ---
 
-## Mock Data & Testing
-
-Generate mock readings manually for tests:
-```bash
-POST /internal/generate-mock-data
-```
-
-Mock sensors refresh automatically every **5 seconds**.
-
----
-
-## 👥 Advisors & Team
+## Team
 
 ### Advisors
-- **Prof. Marcos Zancul** — Scientific Advisor, Manufacturing Systems & Product Development (Poli-USP)  
-- **Otávio Vacari** — Technical Advisor, Computer Engineer (Poli-USP), M.Sc. in Applied Cryptography and Distributed Systems  
+- **Prof. Marcos Zancul** — Scientific Advisor, Manufacturing Systems & Product Development (Poli-USP)
+- **Otávio Vacari** — Technical Advisor, Computer Engineer (Poli-USP), M.Sc. in Applied Cryptography and Distributed Systems
 
-### Core Team
+### Core team
 | Member | Role | Background |
 |---------|------|-------------|
 | **Vinício Mendes** | Project Creator & Product Lead | Production Engineering student (Poli-USP); Founder of FireTheBox; Researcher in DePIN and Smart Infrastructure |
@@ -202,35 +194,26 @@ Mock sensors refresh automatically every **5 seconds**.
 
 ## License
 
-This project is distributed under the **MIT License**.  
-Feel free to use, modify, and contribute under the same principles of transparency and openness.
-
-```
 MIT License © 2025 Sparked Sense Project
-```
 
 ---
 
-## 🤝 Contributing
+## Contributing
 
-We welcome community contributions!
-
-1. Fork the repository  
-2. Create your feature branch (`git checkout -b feature/your-feature`)  
-3. Commit your changes (`git commit -m 'Add new feature'`)  
-4. Push the branch (`git push origin feature/your-feature`)  
-5. Submit a Pull Request 🚀  
+1. Fork the repository
+2. Create a feature branch (`git checkout -b feat/your-feature`)
+3. Commit your changes
+4. Push (`git push origin feat/your-feature`)
+5. Open a Pull Request
 
 ---
 
-## 📫 Contact
+## Contact
 
-🌐 **Website:** [sparkedsensemvp.vercel.app](https://sparkedsensemvp.vercel.app/)  
-🐦 **Twitter/X:** [@sparkedsense](https://x.com/sparkedsense)  
-📧 **Issues & Feedback:** [GitHub Issues](https://github.com/your-username/SparkedSense/issues)
+🌐 **Website:** [sparkedsensemvp.vercel.app](https://sparkedsensemvp.vercel.app/)
+🐦 **Twitter/X:** [@sparkedsense](https://x.com/sparkedsense)
+📧 **Issues & Feedback:** [GitHub Issues](https://github.com/viniciomendesr/sparkedsense/issues)
 
 ---
 
-> _Sparked Sense is an open-source movement to make environmental data verifiable, decentralized, and universally accessible — building the foundation for transparent DePIN ecosystems._
->
-> 
+> _Sparked Sense is open infrastructure for trustworthy physical-world data — a foundation for DePIN applications across any domain that needs verifiable sensor data without trusting the operator._
