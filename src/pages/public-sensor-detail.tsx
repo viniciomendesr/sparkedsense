@@ -18,7 +18,7 @@ import {
   Info,
   MapPin
 } from 'lucide-react';
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import { SensorChart } from '../components/sensor-chart';
 import { publicAPI } from '../lib/api';
 import { formatDataSize } from '../lib/format';
 import { verifyMerkleRoot } from '../lib/merkle';
@@ -41,6 +41,7 @@ export function PublicSensorDetailPage({
 }: PublicSensorDetailPageProps) {
   const [isStreaming, setIsStreaming] = useState(true);
   const [readings, setReadings] = useState<Reading[]>([]);
+  const [historicalReadings, setHistoricalReadings] = useState<Reading[]>([]);
   const [datasets, setDatasets] = useState<Dataset[]>([]);
   const [loading, setLoading] = useState(true);
   const [verifyHashInput, setVerifyHashInput] = useState('');
@@ -51,12 +52,18 @@ export function PublicSensorDetailPage({
     const loadData = async () => {
       try {
         setLoading(true);
-        const [readingsData, datasetsData] = await Promise.all([
+        const [readingsData, historicalData, datasetsData] = await Promise.all([
           publicAPI.getPublicReadings(sensor.id, 100),
+          publicAPI.getPublicReadings(sensor.id, 5000),
           publicAPI.getPublicDatasets(sensor.id),
         ]);
 
         const parsedReadings = readingsData.map(r => ({
+          ...r,
+          timestamp: new Date(r.timestamp),
+        }));
+
+        const parsedHistorical = historicalData.map(r => ({
           ...r,
           timestamp: new Date(r.timestamp),
         }));
@@ -72,8 +79,11 @@ export function PublicSensorDetailPage({
         // For mock sensors, fall back to generated data if no API data
         if (sensor.mode === 'real') {
           setReadings(parsedReadings);
+          setHistoricalReadings(parsedHistorical);
         } else {
-          setReadings(parsedReadings.length > 0 ? parsedReadings : generateHistoricalReadings(sensor.id, sensor.type, 60));
+          const fallback = generateHistoricalReadings(sensor.id, sensor.type, 60);
+          setReadings(parsedReadings.length > 0 ? parsedReadings : fallback);
+          setHistoricalReadings(parsedHistorical.length > 0 ? parsedHistorical : fallback);
         }
         setDatasets(parsedDatasets);
       } catch (error: any) {
@@ -83,8 +93,10 @@ export function PublicSensorDetailPage({
         if (sensor.mode === 'mock') {
           const historical = generateHistoricalReadings(sensor.id, sensor.type, 60);
           setReadings(historical);
+          setHistoricalReadings(historical);
         } else {
           setReadings([]);
+          setHistoricalReadings([]);
         }
       } finally {
         setLoading(false);
@@ -113,11 +125,6 @@ export function PublicSensorDetailPage({
   // Filter readings to last hour
   const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
   const lastHourReadings = readings.filter(r => r.timestamp >= oneHourAgo);
-
-  const chartData = readings.map(r => ({
-    time: r.timestamp.toLocaleTimeString(),
-    value: r.value,
-  }));
 
   const copyToClipboard = async (text: string) => {
     try {
@@ -406,43 +413,14 @@ export function PublicSensorDetailPage({
             </div>
           </Card>
 
-          {/* Chart */}
-          <Card className="p-6 bg-card border-border mb-4">
-            <h3 className="mb-4" style={{ fontWeight: 600, color: 'var(--text-primary)' }}>
-              Live Chart
-            </h3>
-            <div className="h-80">
-              <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={chartData}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
-                  <XAxis 
-                    dataKey="time" 
-                    stroke="var(--text-muted)"
-                    tick={{ fill: 'var(--text-muted)', fontSize: 12 }}
-                  />
-                  <YAxis 
-                    stroke="var(--text-muted)"
-                    tick={{ fill: 'var(--text-muted)', fontSize: 12 }}
-                  />
-                  <Tooltip
-                    contentStyle={{
-                      backgroundColor: 'var(--card)',
-                      border: '1px solid var(--border)',
-                      borderRadius: '8px',
-                      color: 'var(--text-primary)',
-                    }}
-                  />
-                  <Line 
-                    type="monotone" 
-                    dataKey="value" 
-                    stroke="var(--chart-1)" 
-                    strokeWidth={2}
-                    dot={false}
-                  />
-                </LineChart>
-              </ResponsiveContainer>
-            </div>
-          </Card>
+          {/* Live Data */}
+          <SensorChart
+            readings={readings}
+            mode="live"
+            title="Live Data"
+            unit={readings[0]?.unit || sensor.lastReading?.unit || ''}
+            className="mb-4"
+          />
 
           {/* Recent Readings Table */}
           <Card className="p-6 bg-card border-border">
@@ -580,6 +558,23 @@ export function PublicSensorDetailPage({
               </div>
             </div>
           </Card>
+        </div>
+
+        {/* Historical Data Feed */}
+        <div className="mb-6">
+          <div className="flex items-center gap-3 mb-4">
+            <Clock className="w-5 h-5 text-primary" />
+            <h2 style={{ fontSize: '1.25rem', fontWeight: 600, color: 'var(--text-primary)' }}>
+              Historical Data Feed
+            </h2>
+          </div>
+
+          <SensorChart
+            readings={historicalReadings}
+            mode="historical"
+            title="Historical Data"
+            unit={historicalReadings[0]?.unit || sensor.lastReading?.unit || ''}
+          />
         </div>
 
         {/* Datasets Section */}

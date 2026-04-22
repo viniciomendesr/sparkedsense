@@ -41,7 +41,7 @@ import {
   Pencil,
   RefreshCw
 } from 'lucide-react';
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import { SensorChart } from '../components/sensor-chart';
 import { useAuth } from '../lib/auth-context';
 import { readingAPI, datasetAPI, merkleAPI, sensorAPI } from '../lib/api';
 import { supabase } from '../utils/supabase/client';
@@ -65,6 +65,7 @@ export function SensorDetailPage({
   const { accessToken, user } = useAuth();
   const [isStreaming, setIsStreaming] = useState(true);
   const [readings, setReadings] = useState<Reading[]>([]);
+  const [historicalReadings, setHistoricalReadings] = useState<Reading[]>([]);
   const [datasets, setDatasets] = useState<Dataset[]>([]);
   const [createDatasetOpen, setCreateDatasetOpen] = useState(false);
   const [datasetName, setDatasetName] = useState('');
@@ -109,13 +110,19 @@ export function SensorDetailPage({
 
       try {
         setLoading(true);
-        const [readingsData, datasetsData, merkleData] = await Promise.all([
+        const [readingsData, historicalData, datasetsData, merkleData] = await Promise.all([
           readingAPI.list(sensor.id, accessToken, 100),
+          readingAPI.list(sensor.id, accessToken, 5000),
           datasetAPI.list(sensor.id, accessToken),
           merkleAPI.getHourlyRoot(sensor.id, accessToken).catch(() => ({ merkleRoot: '' })),
         ]);
 
         const parsedReadings = readingsData.map(r => ({
+          ...r,
+          timestamp: new Date(r.timestamp),
+        }));
+
+        const parsedHistorical = historicalData.map(r => ({
           ...r,
           timestamp: new Date(r.timestamp),
         }));
@@ -131,8 +138,11 @@ export function SensorDetailPage({
         // For mock sensors, fall back to generated data if no API data
         if (sensor.mode === 'real') {
           setReadings(parsedReadings);
+          setHistoricalReadings(parsedHistorical);
         } else {
-          setReadings(parsedReadings.length > 0 ? parsedReadings : generateHistoricalReadings(sensor.id, sensor.type, 60));
+          const fallback = generateHistoricalReadings(sensor.id, sensor.type, 60);
+          setReadings(parsedReadings.length > 0 ? parsedReadings : fallback);
+          setHistoricalReadings(parsedHistorical.length > 0 ? parsedHistorical : fallback);
         }
         setDatasets(parsedDatasets);
         setHourlyMerkleRoot(merkleData.merkleRoot || '');
@@ -144,8 +154,10 @@ export function SensorDetailPage({
         if (sensor.mode === 'mock') {
           const historical = generateHistoricalReadings(sensor.id, sensor.type, 60);
           setReadings(historical);
+          setHistoricalReadings(historical);
         } else {
           setReadings([]);
+          setHistoricalReadings([]);
         }
       } finally {
         setLoading(false);
@@ -347,11 +359,6 @@ export function SensorDetailPage({
   // Filter readings to last hour
   const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
   const lastHourReadings = readings.filter(r => r.timestamp >= oneHourAgo);
-
-  const chartData = readings.map(r => ({
-    time: r.timestamp.toLocaleTimeString(),
-    value: r.value,
-  }));
 
   const copyToClipboard = async (text: string) => {
     try {
@@ -597,6 +604,10 @@ export function SensorDetailPage({
             <Activity className="w-4 h-4 mr-2" />
             Live Stream
           </TabsTrigger>
+          <TabsTrigger value="historical" className="data-[state=active]:bg-card">
+            <Clock className="w-4 h-4 mr-2" />
+            Historical
+          </TabsTrigger>
           <TabsTrigger value="datasets" className="data-[state=active]:bg-card">
             <Database className="w-4 h-4 mr-2" />
             Datasets ({datasets.length})
@@ -636,43 +647,13 @@ export function SensorDetailPage({
             </div>
           </Card>
 
-          {/* Chart */}
-          <Card className="p-6 bg-card border-border">
-            <h3 className="mb-4" style={{ fontWeight: 600, color: 'var(--text-primary)' }}>
-              Real-Time Chart
-            </h3>
-            <div className="h-80">
-              <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={chartData}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
-                  <XAxis 
-                    dataKey="time" 
-                    stroke="var(--text-muted)"
-                    tick={{ fill: 'var(--text-muted)', fontSize: 12 }}
-                  />
-                  <YAxis 
-                    stroke="var(--text-muted)"
-                    tick={{ fill: 'var(--text-muted)', fontSize: 12 }}
-                  />
-                  <Tooltip
-                    contentStyle={{
-                      backgroundColor: 'var(--card)',
-                      border: '1px solid var(--border)',
-                      borderRadius: '8px',
-                      color: 'var(--text-primary)',
-                    }}
-                  />
-                  <Line 
-                    type="monotone" 
-                    dataKey="value" 
-                    stroke="var(--chart-1)" 
-                    strokeWidth={2}
-                    dot={false}
-                  />
-                </LineChart>
-              </ResponsiveContainer>
-            </div>
-          </Card>
+          {/* Live Data */}
+          <SensorChart
+            readings={readings}
+            mode="live"
+            title="Live Data"
+            unit={readings[0]?.unit || sensor.lastReading?.unit || ''}
+          />
 
           {/* Recent Readings Table */}
           <Card className="p-6 bg-card border-border">
@@ -840,6 +821,16 @@ export function SensorDetailPage({
               </div>
             </div>
           </Card>
+        </TabsContent>
+
+        {/* Historical Tab */}
+        <TabsContent value="historical" className="space-y-6">
+          <SensorChart
+            readings={historicalReadings}
+            mode="historical"
+            title="Historical Data"
+            unit={historicalReadings[0]?.unit || sensor.lastReading?.unit || ''}
+          />
         </TabsContent>
 
         {/* Datasets Tab */}
