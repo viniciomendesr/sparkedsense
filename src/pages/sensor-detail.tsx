@@ -83,8 +83,6 @@ export function SensorDetailPage({
   const [sensorName, setSensorName] = useState(sensor.name);
   const [sensorDescription, setSensorDescription] = useState(sensor.description);
 
-  const isOwner = !!user && user.id === sensor.owner;
-
   // Load initial data
   useEffect(() => {
     const loadData = async () => {
@@ -439,18 +437,16 @@ export function SensorDetailPage({
               <h1 style={{ fontSize: '1.75rem', fontWeight: 600, color: 'var(--text-primary)' }}>
                 {sensorName}
               </h1>
-              {isOwner && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-8 w-8 p-0 text-muted-foreground hover:text-foreground"
-                  onClick={() => setEditSensorDialogOpen(true)}
-                  aria-label="Edit sensor"
-                  title="Edit sensor"
-                >
-                  <Pencil className="w-4 h-4" />
-                </Button>
-              )}
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-8 w-8 p-0 text-muted-foreground hover:text-foreground"
+                onClick={() => setEditSensorDialogOpen(true)}
+                aria-label="Edit sensor"
+                title="Edit sensor"
+              >
+                <Pencil className="w-4 h-4" />
+              </Button>
             </div>
             <p className="mb-3" style={{ color: 'var(--text-secondary)' }}>
               {sensorDescription}
