@@ -38,7 +38,8 @@ import {
   Settings,
   Eye,
   MapPin,
-  Pencil
+  Pencil,
+  RefreshCw
 } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { useAuth } from '../lib/auth-context';
@@ -82,6 +83,23 @@ export function SensorDetailPage({
   const [editSensorDialogOpen, setEditSensorDialogOpen] = useState(false);
   const [sensorName, setSensorName] = useState(sensor.name);
   const [sensorDescription, setSensorDescription] = useState(sensor.description);
+  const [sensorLocation, setSensorLocation] = useState(sensor.location);
+  const [isRefreshingLocation, setIsRefreshingLocation] = useState(false);
+
+  const handleRefreshLocation = async () => {
+    if (!accessToken || isRefreshingLocation) return;
+    try {
+      setIsRefreshingLocation(true);
+      const updated = await sensorAPI.refreshLocation(sensor.id, accessToken);
+      setSensorLocation(updated.location);
+      toast.success('Location refreshed');
+    } catch (error: any) {
+      console.error('Failed to refresh location:', error);
+      toast.error(error.message || 'Failed to refresh location');
+    } finally {
+      setIsRefreshingLocation(false);
+    }
+  };
 
   // Load initial data
   useEffect(() => {
@@ -451,11 +469,11 @@ export function SensorDetailPage({
             <p className="mb-3" style={{ color: 'var(--text-secondary)' }}>
               {sensorDescription}
             </p>
-            {sensor.location && (
+            {sensorLocation && (
               <div className="flex items-center gap-1.5 mb-3">
                 <MapPin className="w-4 h-4 text-muted-foreground shrink-0" />
                 <span className="text-sm" style={{ color: 'var(--text-secondary)' }}>
-                  {sensor.location}
+                  {sensorLocation}
                   {sensor.latitude != null && sensor.longitude != null && (
                     <span className="text-xs ml-2" style={{ color: 'var(--text-muted)' }}>
                       ({sensor.latitude.toFixed(4)}, {sensor.longitude.toFixed(4)}
@@ -463,6 +481,19 @@ export function SensorDetailPage({
                     </span>
                   )}
                 </span>
+                {sensor.latitude != null && sensor.longitude != null && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-6 w-6 p-0 text-muted-foreground hover:text-foreground"
+                    onClick={handleRefreshLocation}
+                    disabled={isRefreshingLocation}
+                    aria-label="Refresh location"
+                    title="Refresh location"
+                  >
+                    <RefreshCw className={`w-3 h-3 ${isRefreshingLocation ? 'animate-spin' : ''}`} />
+                  </Button>
+                )}
               </div>
             )}
             {readings.length > 0 && (

@@ -173,6 +173,19 @@ export const sensorAPI = {
     }
     return response.json();
   },
+
+  refreshLocation: async (id: string, accessToken: string) => {
+    const response = await fetch(`${API_BASE}/sensors/${id}/refresh-location`, {
+      method: "POST",
+      headers: getAuthHeaders(accessToken),
+    });
+    if (!response.ok) {
+      const error = await response.text();
+      throw new Error(`Failed to refresh location: ${error}`);
+    }
+    const data = await response.json();
+    return data.sensor as Sensor;
+  },
 };
 
 // Reading APIs

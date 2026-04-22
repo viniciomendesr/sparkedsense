@@ -550,6 +550,32 @@ app.post("/server/sensors", async (c) => {
 // Used to approximate the human-readable "stored" metric.
 const AVG_READING_BYTES = 206;
 
+// Build a human-readable location string from a Nominatim reverse-geocode result.
+// Prioritizes neighborhood/suburb (bairro) so the label is more specific than just the city.
+// Falls back to raw coordinates if nothing usable is returned.
+const buildLocationText = (
+  address: { displayName?: string; address?: Record<string, string> } | undefined,
+  latitude: number,
+  longitude: number,
+): string => {
+  const addr = address?.address;
+  if (!addr) return `${latitude.toFixed(4)}, ${longitude.toFixed(4)}`;
+
+  const neighborhood =
+    addr.suburb || addr.neighbourhood || addr.quarter || addr.city_district || addr.residential;
+  const city = addr.city || addr.town || addr.village || addr.municipality;
+
+  const parts: string[] = [];
+  if (neighborhood) parts.push(neighborhood);
+  // Only add city if it's different from the neighborhood (dense rural areas can collide)
+  if (city && city !== neighborhood) parts.push(city);
+  if (addr.state) parts.push(addr.state);
+  if (addr.country) parts.push(addr.country);
+
+  if (parts.length > 0) return parts.join(', ');
+  return address?.displayName || `${latitude.toFixed(4)}, ${longitude.toFixed(4)}`;
+};
+
 // Fields a user may change via PUT /sensors/:id.
 // location/latitude/longitude/locationAccuracy come from the device firmware and
 // must never be mutable by the user — changing them would break the DePIN trust model.
@@ -586,6 +612,59 @@ app.put("/server/sensors/:id", async (c) => {
   } catch (error) {
     console.error('Failed to update sensor:', error);
     return c.json({ error: 'Failed to update sensor' }, 500);
+  }
+});
+
+// Re-derive the human-readable location text from the sensor's stored lat/lng.
+// Useful after changing the location-text formatter (e.g., adding neighborhood) for
+// sensors that already have coords ingested from firmware. Owner-only. Does NOT
+// accept new coordinates from the client — the physical signal remains firmware-driven.
+app.post("/server/sensors/:id/refresh-location", async (c) => {
+  try {
+    const user = await getUserFromToken(c.req.raw);
+    if (!user) {
+      return c.json({ error: 'Unauthorized' }, 401);
+    }
+
+    const id = c.req.param('id');
+    const sensor = await kv.get(`sensor:${user.id}:${id}`);
+    if (!sensor) {
+      return c.json({ error: 'Sensor not found' }, 404);
+    }
+    if (sensor.latitude == null || sensor.longitude == null) {
+      return c.json({ error: 'Sensor has no stored coordinates' }, 400);
+    }
+
+    const nomRes = await fetch(
+      `https://nominatim.openstreetmap.org/reverse?format=json&lat=${sensor.latitude}&lon=${sensor.longitude}&zoom=18&addressdetails=1`,
+      { headers: { 'User-Agent': 'sparked-sense/1.0' } },
+    );
+    if (!nomRes.ok) {
+      return c.json({ error: 'Reverse geocoding failed' }, 502);
+    }
+    const nomData = await nomRes.json();
+    const locationText = buildLocationText(
+      { displayName: nomData.display_name, address: nomData.address },
+      sensor.latitude,
+      sensor.longitude,
+    );
+
+    sensor.location = locationText;
+    sensor.updatedAt = new Date().toISOString();
+    await kv.set(`sensor:${user.id}:${id}`, sensor);
+
+    // Mirror to devices table so public endpoints also see the update
+    if (sensor.nftAddress) {
+      await supabase
+        .from('devices')
+        .update({ location: locationText })
+        .eq('nft_address', sensor.nftAddress);
+    }
+
+    return c.json({ sensor });
+  } catch (error) {
+    console.error('Failed to refresh sensor location:', error);
+    return c.json({ error: 'Failed to refresh location' }, 500);
   }
 });
 
@@ -1785,37 +1864,10 @@ app.post("/server/device-location", async (c) => {
     let longitude: number;
     let locationText: string;
 
-    if (geoData.triangulated) {
-      latitude = geoData.triangulated.latitude;
-      longitude = geoData.triangulated.longitude;
-      // Use triangulated address if available
-      const addr = geoData.triangulated.address;
-      if (addr?.address) {
-        const parts = [
-          addr.address.city || addr.address.town || addr.address.village || addr.address.municipality,
-          addr.address.state,
-          addr.address.country,
-        ].filter(Boolean);
-        locationText = parts.length > 0 ? parts.join(', ') : addr.displayName || `${latitude.toFixed(4)}, ${longitude.toFixed(4)}`;
-      } else {
-        locationText = `${latitude.toFixed(4)}, ${longitude.toFixed(4)}`;
-      }
-    } else {
-      // Use first result
-      const first = geoData.results[0];
-      latitude = first.latitude;
-      longitude = first.longitude;
-      if (first.address?.address) {
-        const parts = [
-          first.address.address.city || first.address.address.town || first.address.address.village || first.address.address.municipality,
-          first.address.address.state,
-          first.address.address.country,
-        ].filter(Boolean);
-        locationText = parts.length > 0 ? parts.join(', ') : first.address.displayName || `${latitude.toFixed(4)}, ${longitude.toFixed(4)}`;
-      } else {
-        locationText = `${latitude.toFixed(4)}, ${longitude.toFixed(4)}`;
-      }
-    }
+    const source = geoData.triangulated ?? geoData.results[0];
+    latitude = source.latitude;
+    longitude = source.longitude;
+    locationText = buildLocationText(source.address, latitude, longitude);
 
     const accuracy = geoData.triangulated ? Math.round(50 / geoData.triangulated.pointsUsed) : 100;
 
