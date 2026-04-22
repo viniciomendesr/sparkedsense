@@ -273,15 +273,51 @@ Format inspired by [Keep a Changelog](https://keepachangelog.com/).
 
 ---
 
+## Phase 13 — Sensor-agnostic ingestion envelope (in progress, target 2026-04-24)
+
+**Contributor:** Vinicio Mendes (with AI assistance — Claude)
+
+### Scope
+- Adopt CloudEvents-compatible envelope with SenML-compatible payloads for the ingestion layer, per [ADR-010](adr/010-sensor-agnostic-ingestion-envelope.md).
+- Single endpoint `POST /reading` supersedes the shape implied by `POST /sensor-data`; legacy endpoint becomes an adapter that wraps DHT11 payloads into `io.sparkedsense.sensor.environmental` envelopes.
+- New platform-blessed event types (`sensor.environmental`, `inference.classification`, `inference.transcription`, …) under reverse-DNS namespace `io.sparkedsense.*`.
+- Frontend type-dispatched renderer framework; first three renderers needed for the 2026-04-24 demo (environmental SenML, acoustic classification from ESP32-S3, transcription from MacBook MEC gateway).
+
+### Rationale for ordering vs. other pending work
+- Hard demo deadline (2 days) imposes a freeze on refactors with wide blast radius. Items pending from [ADR-007](adr/007-merkle-tree-before-blockchain.md) (NFT metadata schema, anchoring transaction format, real Solana devnet integration) are orthogonal to the envelope shape and deferred.
+- Backend modularization (`supabase/functions/server/index.ts` at 1900+ lines) is a soft prerequisite that was intentionally **not** done first: risk of regressions in working code outweighs the cleanup benefit at this horizon. Instead, ADR-010 code ships as new modules (`ingest.ts`, `schemas/`) alongside the monolith; extraction of legacy handlers follows post-demo.
+- WiFi geolocation with Brazil coverage (pending in Phase 10) is already resolved: backend actively uses `GEOLOCATE_WORKER_URL` pointing at the Cloudflare Worker (Apple WiFi DB), not Mylnikov.
+
+### Conscious bets
+- The adapter preserves production DHT11 — no firmware change required for the existing sensor to keep reporting during and after the migration.
+- `sensor_readings_compat` view projects SenML records back into the legacy shape so the current frontend keeps working while renderers for new modalities are added.
+- The author's concurrent undergraduate research (heterogeneous Edge AI inference aggregation) composes on top of this layer without blurring platform vs. research boundaries.
+
+### Status
+- [ ] ADR written and merged, status **Accepted** (this phase marks the transition from Proposed).
+- [ ] `docs/event-types/` with JSON Schemas for the nine platform-blessed types.
+- [ ] Migration creating `readings` table + `sensor_readings_compat` view.
+- [ ] Backend `POST /reading` with envelope validation + signature verification.
+- [ ] Backend adapter on `POST /sensor-data` delegating to `POST /reading`.
+- [ ] Frontend type-dispatched renderer framework + three initial renderers.
+- [ ] Page `/demo-claro` consuming the new renderers.
+- [ ] ESP32-S3 acoustic client emits envelopes; MacBook whisper gateway emits envelopes.
+
+> Implementation order and risks documented in [ADR-010](adr/010-sensor-agnostic-ingestion-envelope.md). This phase is intentionally open until the demo stabilizes, at which point items 8–9 of the ADR's implementation order (deprecation window, quickstart documentation) move to Phase 14.
+
+---
+
 ## Current status
 
-**Implemented:** End-to-end DePIN flow with secp256k1 cryptographic authentication, simulated digital identity (nftAddress), real-time dashboard with automatic polling for real sensors, binary Merkle tree with inclusion proofs for dataset integrity verification (client-side and server-side), PostgreSQL as canonical storage for sensor readings (KV store retained only for sensor metadata and datasets), Solana devnet wallet under project control, homepage with Featured Public Sensors, WiFi-based geolocation endpoint (pending provider with Brazil coverage). Structured documentation with ADR index and timeline in `docs/`.
+**Implemented:** End-to-end DePIN flow with secp256k1 cryptographic authentication, simulated digital identity (nftAddress), real-time dashboard with automatic polling for real sensors, binary Merkle tree with inclusion proofs for dataset integrity verification (client-side and server-side), PostgreSQL as canonical storage for sensor readings (KV store retained only for sensor metadata and datasets), Solana devnet wallet under project control, homepage with Featured Public Sensors, WiFi-based geolocation via Apple WiFi DB through Cloudflare Worker. Structured documentation with ADR index and timeline in `docs/`.
 
-**Next steps (from ADR-007):**
+**In progress (Phase 13, target 2026-04-24):** Sensor-agnostic ingestion envelope per [ADR-010](adr/010-sensor-agnostic-ingestion-envelope.md) — CloudEvents + SenML adoption, `POST /reading` endpoint, renderer framework for heterogeneous modalities (environmental telemetry, ML classification, transcription) for the demo.
+
+**Next steps (from ADR-007, deferred until post-demo):**
 1. ~~Fix Merkle tree implementation~~ — done (Phase 8)
-2. Deploy WiFi geolocation provider with Brazil coverage (Apple WiFi DB via Cloudflare Worker)
+2. ~~Deploy WiFi geolocation provider with Brazil coverage~~ — done (Apple WiFi DB via Cloudflare Worker, env `GEOLOCATE_WORKER_URL` in use)
 3. Define NFT metadata schema for device identity
 4. Define anchoring transaction format (Memo Program vs metadata update vs PDA)
 5. Implement real Solana devnet integration (NFT minting + dataset anchoring)
 
-**Also pending:** Firmware resilience (WiFi reconnection, watchdog, HTTPS timeout — see audit), backend modularization, and open source documentation.
+**Also pending (post-demo):** Firmware resilience (WiFi reconnection, watchdog, HTTPS timeout — see audit), backend modularization (`index.ts` split), open source documentation, ESP8266 migration from legacy `POST /sensor-data` to native envelope emission (see ADR-010 item 8).
