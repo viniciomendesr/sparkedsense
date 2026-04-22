@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sparkedsense.io/event-types/io.sparkedsense.inference.classification.schema.json",
+  "title": "io.sparkedsense.inference.classification",
+  "description": "Discrete-class ML inference output. Emitted by edge classifiers (audio/image/vibration).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["class", "confidence", "model_id"],
+  "properties": {
+    "class":            { "type": "string", "minLength": 1, "description": "Predicted class label." },
+    "confidence":       { "type": "number", "minimum": 0, "maximum": 1, "description": "Softmax probability or equivalent 0-1 score." },
+    "class_vocabulary": { "type": "array", "items": { "type": "string" }, "description": "Ordered list of possible classes; enables downstream consumers to reconstruct the full probability distribution if scores are provided." },
+    "scores":           { "type": "array", "items": { "type": "number", "minimum": 0, "maximum": 1 }, "description": "Optional per-class scores aligned with class_vocabulary." },
+    "model_id":         { "type": "string", "minLength": 1, "description": "Human-readable model identifier (e.g., 'mall-acoustic-v1')." },
+    "model_version":    { "type": "string", "description": "Semver or hash of the deployed model weights." },
+    "inference_ms":     { "type": "number", "minimum": 0, "description": "Wall-clock inference latency on the edge node." },
+    "source_event_id":  { "type": "string", "description": "Optional: if this inference was derived from another event (e.g., raw audio window), the original event id." }
+  }
+}

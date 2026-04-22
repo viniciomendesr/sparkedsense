@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sparkedsense.io/event-types/io.sparkedsense.raw.audio.schema.json",
+  "title": "io.sparkedsense.raw.audio",
+  "description": "Short raw audio window. Intended for local consumption by MEC nodes that will emit downstream inference events; not typically exposed on public audit pages.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["audio_base64", "sample_rate", "duration_ms"],
+  "properties": {
+    "audio_base64": { "type": "string", "description": "Base64-encoded PCM or WAV audio." },
+    "sample_rate":  { "type": "number", "minimum": 1, "description": "Sample rate in Hz (e.g., 16000)." },
+    "channels":     { "type": "integer", "minimum": 1, "default": 1 },
+    "bit_depth":    { "type": "integer", "enum": [8, 16, 24, 32], "default": 16 },
+    "duration_ms":  { "type": "number", "minimum": 0 },
+    "encoding":     { "type": "string", "enum": ["pcm_s16le", "pcm_s24le", "pcm_f32le", "wav"], "default": "pcm_s16le" }
+  }
+}

@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sparkedsense.io/event-types/io.sparkedsense.inference.semantic_summary.schema.json",
+  "title": "io.sparkedsense.inference.semantic_summary",
+  "description": "LLM-derived semantic metadata extracted from one or more prior inferences (typically transcriptions).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["summary", "engine"],
+  "properties": {
+    "summary":         { "type": "string", "description": "Short natural-language summary of the source content." },
+    "keywords":        { "type": "array", "items": { "type": "string" } },
+    "topics":          { "type": "array", "items": { "type": "string" } },
+    "sentiment":       { "type": "string", "enum": ["positive", "neutral", "negative", "mixed"] },
+    "engine":          { "type": "string", "description": "Identifier of the LLM backend (e.g., 'claude-sonnet-4-6')." },
+    "source_event_id": { "type": "string", "description": "Primary source event id (transcription, inference) this summary references." },
+    "source_event_ids": { "type": "array", "items": { "type": "string" }, "description": "If derived from multiple source events." }
+  }
+}

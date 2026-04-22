@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sparkedsense.io/event-types/io.sparkedsense.inference.regression.schema.json",
+  "title": "io.sparkedsense.inference.regression",
+  "description": "Continuous-value ML inference output (estimated occupancy, predicted temperature, etc.).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["value", "model_id"],
+  "properties": {
+    "value":         { "type": "number", "description": "Predicted continuous value." },
+    "unit":          { "type": "string", "description": "Unit from the IANA SenML Units registry, if meaningful." },
+    "uncertainty":   { "type": "number", "minimum": 0, "description": "Optional standard deviation or confidence interval width." },
+    "model_id":      { "type": "string", "minLength": 1 },
+    "model_version": { "type": "string" },
+    "inference_ms":  { "type": "number", "minimum": 0 },
+    "source_event_id": { "type": "string" }
+  }
+}

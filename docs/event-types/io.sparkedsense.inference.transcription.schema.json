@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sparkedsense.io/event-types/io.sparkedsense.inference.transcription.schema.json",
+  "title": "io.sparkedsense.inference.transcription",
+  "description": "Speech-to-text output emitted by a MEC gateway or edge ASR node.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["text", "engine"],
+  "properties": {
+    "text":                 { "type": "string", "description": "Transcribed text." },
+    "language":             { "type": "string", "description": "ISO-639-1 (e.g., 'pt', 'en') or ISO-639-3 code detected or configured." },
+    "engine":               { "type": "string", "description": "Identifier of the ASR engine (e.g., 'faster-whisper@v1.1.1')." },
+    "duration_processed_ms":{ "type": "number", "minimum": 0, "description": "Length of audio processed for this transcription." },
+    "confidence":           { "type": "number", "minimum": 0, "maximum": 1 },
+    "source_event_id":      { "type": "string", "description": "Event id of the raw audio window this transcription was derived from." }
+  }
+}

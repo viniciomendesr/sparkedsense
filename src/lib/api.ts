@@ -487,6 +487,37 @@ export const publicAPI = {
     return data.readings as Reading[];
   },
 
+  /**
+   * ADR-010: fetch the latest CloudEvents envelopes for a public sensor.
+   * Optional `eventType` filters to a single event_type (e.g. 'io.sparkedsense.inference.classification').
+   */
+  getEnvelopes: async (sensorId: string, opts?: { limit?: number; eventType?: string }) => {
+    const params = new URLSearchParams();
+    params.set('limit', String(opts?.limit ?? 100));
+    if (opts?.eventType) params.set('type', opts.eventType);
+    const response = await fetch(
+      `${API_BASE}/public/readings-v2/${sensorId}?${params.toString()}`,
+      { method: 'GET', headers: getAuthHeaders() },
+    );
+    if (!response.ok) {
+      const error = await response.text();
+      throw new Error(`Failed to fetch envelopes: ${error}`);
+    }
+    const data = await response.json();
+    return data.readings as Array<{
+      id: string;
+      spec_version: string;
+      event_type: string;
+      source: string;
+      time: string;
+      datacontenttype: string;
+      data: unknown;
+      device_id: string;
+      signature: string;
+      created_at: string;
+    }>;
+  },
+
   getPublicHourlyMerkle: async (sensorId: string) => {
     const response = await fetch(
       `${API_BASE}/public/sensors/${sensorId}/hourly-merkle`,

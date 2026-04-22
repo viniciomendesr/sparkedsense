@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sparkedsense.io/event-types/io.sparkedsense.sensor.environmental.schema.json",
+  "title": "io.sparkedsense.sensor.environmental",
+  "description": "Numeric-scalar environmental telemetry (temperature, humidity, pH, air quality, etc.) expressed as a SenML record array per RFC 8428.",
+  "type": "array",
+  "minItems": 1,
+  "items": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["n", "u"],
+    "properties": {
+      "bn": { "type": "string", "description": "Base name — prefixed to every record's name." },
+      "bt": { "type": "number", "description": "Base time in seconds since epoch." },
+      "n":  { "type": "string", "description": "Measurement name (e.g., 'temperature', 'humidity')." },
+      "u":  { "type": "string", "description": "Unit from the IANA SenML Units registry (e.g., 'Cel', '%RH', 'hPa')." },
+      "t":  { "type": "number", "description": "Time offset from bt in seconds; absolute if bt absent." },
+      "v":  { "type": "number", "description": "Numeric value." },
+      "vs": { "type": "string", "description": "String value (alternative to v)." },
+      "vb": { "type": "boolean", "description": "Boolean value (alternative to v)." },
+      "vd": { "type": "string", "description": "Base64-encoded binary value (alternative to v)." }
+    },
+    "oneOf": [
+      { "required": ["v"] },
+      { "required": ["vs"] },
+      { "required": ["vb"] },
+      { "required": ["vd"] }
+    ]
+  }
+}

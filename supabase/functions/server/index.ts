@@ -7,6 +7,14 @@ import { crypto } from "jsr:@std/crypto@1.0.3";
 import * as secp256k1 from "https://esm.sh/@noble/curves@1.4.0/secp256k1";
 import { buildTree, generateProof, verifyProof, sha256Hex } from "./lib/merkle.ts";
 import type { MerkleTree } from "./lib/merkle.ts";
+import {
+  validateEnvelopeShape,
+  validateTypedPayload,
+  verifyEnvelopeSignature,
+  isPlatformType,
+  parseSource,
+  type Envelope,
+} from "./lib/ingest.ts";
 
 const app = new Hono();
 
@@ -1714,6 +1722,44 @@ app.post("/server/sensor-data", async (c) => {
       .update({ last_ts_seen: nowSec })
       .eq('nft_address', nftAddress);
 
+    // ADR-010 dual-write: also mirror into the new `readings` table as an
+    // io.sparkedsense.sensor.environmental envelope. ESP8266 firmware keeps
+    // posting the legacy shape; we wrap it here so downstream consumers can
+    // migrate to the envelope feed without waiting for a firmware update.
+    try {
+      const envelopeId = crypto.randomUUID();
+      const senmlRecords: Record<string, unknown>[] = [];
+      if (typeof payload.temperature === 'number') {
+        senmlRecords.push({ n: 'temperature', u: 'Cel', v: payload.temperature });
+      }
+      if (typeof payload.humidity === 'number') {
+        senmlRecords.push({ n: 'humidity', u: '%RH', v: payload.humidity });
+      }
+      if (typeof payload.ph_level === 'number') {
+        senmlRecords.push({ n: 'ph', u: '1', v: payload.ph_level });
+      }
+
+      if (senmlRecords.length > 0) {
+        await supabase.from('readings').insert({
+          id: envelopeId,
+          spec_version: '1.0',
+          event_type: 'io.sparkedsense.sensor.environmental',
+          source: `spark:device:${device.public_key}`,
+          time: readingTimestamp,
+          datacontenttype: 'application/senml+json',
+          data: senmlRecords,
+          device_id: device.id,
+          // Legacy payload uses {r, s} split; mirror compact hex so the row keeps a
+          // reference to the original proof. This signature is NOT re-verifiable against
+          // the envelope canonicalization — the authoritative proof remains the row in
+          // sensor_readings. The adapter is an ADR-010 compat shim, not a new trust root.
+          signature: `${signature.r}${signature.s}`,
+        });
+      }
+    } catch (envErr: any) {
+      console.error('ADR-010 mirror (sensor-data → readings) failed (non-fatal):', envErr.message);
+    }
+
     // Also store in KV store so the dashboard Live Stream / Real-Time Chart can display it
     try {
       const allSensors = await kv.getByPrefix('sensor:');
@@ -1768,6 +1814,157 @@ app.post("/server/sensor-data", async (c) => {
   } catch (err: any) {
     console.error('sensor-data error:', err);
     return c.json({ error: err.message || 'Internal server error' }, 500);
+  }
+});
+
+// ======================
+// ADR-010: Sensor-agnostic ingestion endpoint
+// ======================
+
+// POST /server/reading
+// Accepts a CloudEvents 1.0 envelope with Sparked Sense signature extension.
+// No user JWT — device is authenticated via secp256k1 signature over canonical
+// JSON of the envelope (minus `signature`). Writes to the `readings` table.
+app.post("/server/reading", async (c) => {
+  try {
+    const body = await c.req.json();
+
+    const { envelope, error: shapeError } = validateEnvelopeShape(body);
+    if (shapeError || !envelope) {
+      return c.json({ error: shapeError?.message ?? 'Invalid envelope', code: shapeError?.code }, 400);
+    }
+
+    const pubKeyHex = parseSource(envelope.source);
+    if (!pubKeyHex) {
+      return c.json({ error: 'Invalid source', code: 'envelope_bad_source' }, 400);
+    }
+
+    const { data: device, error: deviceError } = await supabase
+      .from('devices')
+      .select('*')
+      .eq('public_key', pubKeyHex)
+      .single();
+
+    if (deviceError || !device) {
+      return c.json({ error: 'Device not registered', code: 'device_not_found' }, 404);
+    }
+
+    if (device.revoked) {
+      return c.json({ error: 'Device revoked', code: 'device_revoked' }, 403);
+    }
+
+    // Rate limit: 55s minimum between readings (same as legacy path)
+    const eventTimeSec = Math.floor(new Date(envelope.time).getTime() / 1000);
+    const nowSec = Math.floor(Date.now() / 1000);
+    if (device.last_ts_seen && (nowSec - Number(device.last_ts_seen)) < 55) {
+      return c.json({ error: 'Rate limited — wait before sending another reading', code: 'rate_limited' }, 429);
+    }
+
+    // Verify signature
+    const validSig = await verifyEnvelopeSignature(envelope, device.public_key);
+    if (!validSig) {
+      return c.json({ error: 'Invalid signature', code: 'bad_signature' }, 401);
+    }
+
+    // Validate typed payload for platform-blessed types; custom types pass through
+    if (isPlatformType(envelope.type)) {
+      const typeError = validateTypedPayload(envelope.type, envelope.data);
+      if (typeError) {
+        return c.json({ error: typeError.message, code: typeError.code }, 400);
+      }
+    }
+
+    // Insert into canonical readings table
+    const { error: insertError } = await supabase.from('readings').insert({
+      id: envelope.id,
+      spec_version: envelope.specversion,
+      event_type: envelope.type,
+      source: envelope.source,
+      time: envelope.time,
+      datacontenttype: envelope.datacontenttype,
+      data: envelope.data,
+      device_id: device.id,
+      signature: envelope.signature,
+    });
+
+    if (insertError) {
+      console.error('readings insert error:', insertError);
+      return c.json({ error: 'Storage error', code: 'storage_error', detail: insertError.message }, 500);
+    }
+
+    // Update rate-limit timestamp + KV sensor lastReading for live dashboard
+    await supabase.from('devices').update({ last_ts_seen: eventTimeSec }).eq('id', device.id);
+
+    try {
+      const allSensors = await kv.getByPrefix('sensor:');
+      const linkedSensor = allSensors.find((s: any) => s.id === device.id || s.claimToken === device.claim_token);
+      if (linkedSensor) {
+        linkedSensor.status = 'active';
+        linkedSensor.updatedAt = new Date().toISOString();
+
+        // Mirror a minimal lastReading for numeric SenML envelopes so existing
+        // sparklines keep working during the dual-write period.
+        if (envelope.type === 'io.sparkedsense.sensor.environmental' || envelope.type === 'io.sparkedsense.sensor.generic') {
+          const records = envelope.data as Array<Record<string, unknown>>;
+          const first = Array.isArray(records) ? records[0] : null;
+          if (first && typeof first.v === 'number') {
+            linkedSensor.lastReading = {
+              id: envelope.id,
+              sensorId: linkedSensor.id,
+              timestamp: envelope.time,
+              variable: (first.n as string) ?? 'value',
+              value: first.v,
+              unit: (first.u as string) ?? '',
+              verified: true,
+              hash: envelope.id,
+              signature: envelope.signature.substring(0, 16),
+            };
+          }
+        }
+        await kv.set(`sensor:${linkedSensor.owner}:${linkedSensor.id}`, linkedSensor);
+      }
+    } catch (kvErr: any) {
+      console.error('KV mirror error (non-fatal):', kvErr.message);
+    }
+
+    console.log(`📨 /reading accepted: type=${envelope.type} source=${envelope.source.substring(13, 29)}... id=${envelope.id}`);
+    return c.json({ success: true, id: envelope.id });
+  } catch (error: any) {
+    console.error('POST /reading error:', error);
+    return c.json({ error: error.message || 'Internal server error', code: 'internal_error' }, 500);
+  }
+});
+
+// GET /server/public/readings-v2/:sensorId
+// Returns raw envelopes for a device (public access for sensors with visibility='public').
+app.get("/server/public/readings-v2/:sensorId", async (c) => {
+  try {
+    const sensorId = c.req.param('sensorId');
+    const limit = parseInt(c.req.query('limit') || '100');
+    const eventType = c.req.query('type');
+
+    // visibility gate via KV sensor
+    const allSensors = await kv.getByPrefix('sensor:');
+    const sensor = allSensors.find((s: any) => s.id === sensorId);
+    if (!sensor) return c.json({ error: 'Sensor not found' }, 404);
+    if (sensor.visibility !== 'public') return c.json({ error: 'Sensor readings are not public' }, 403);
+
+    let query = supabase
+      .from('readings')
+      .select('*')
+      .eq('device_id', sensorId)
+      .order('time', { ascending: false })
+      .limit(limit);
+
+    if (eventType) query = query.eq('event_type', eventType);
+
+    const { data, error } = await query;
+    if (error) return c.json({ error: error.message }, 500);
+
+    return c.json({ readings: data ?? [] });
+  } catch (error: any) {
+    console.error('GET /public/readings-v2 error:', error);
+    return c.json({ error: error.message || 'Internal server error' }, 500);
   }
 });
 

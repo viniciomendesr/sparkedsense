@@ -1,0 +1,7 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sparkedsense.io/event-types/io.sparkedsense.sensor.generic.schema.json",
+  "title": "io.sparkedsense.sensor.generic",
+  "description": "Catch-all SenML-compatible telemetry. Shape identical to io.sparkedsense.sensor.environmental; the distinction is semantic — 'generic' is used when the measurement does not fit the environmental profile but is still SenML.",
+  "$ref": "io.sparkedsense.sensor.environmental.schema.json"
+}

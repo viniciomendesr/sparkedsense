@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sparkedsense.io/event-types/io.sparkedsense.inference.detection.schema.json",
+  "title": "io.sparkedsense.inference.detection",
+  "description": "Binary event detection with metadata (presence/absence of a condition within a window).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["detected", "model_id"],
+  "properties": {
+    "detected":           { "type": "boolean", "description": "Whether the event was detected in the observation window." },
+    "event_duration_ms":  { "type": "number", "minimum": 0, "description": "Duration of the detected event, if applicable." },
+    "peak_intensity":     { "type": "number", "description": "Domain-specific intensity (e.g., dB for audio, lux for light)." },
+    "confidence":         { "type": "number", "minimum": 0, "maximum": 1 },
+    "model_id":           { "type": "string", "minLength": 1 },
+    "model_version":      { "type": "string" },
+    "source_event_id":    { "type": "string" }
+  }
+}
