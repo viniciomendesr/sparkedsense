@@ -112,7 +112,7 @@ export function SensorDetailPage({
         setLoading(true);
         const [readingsData, historicalData, datasetsData, merkleData] = await Promise.all([
           readingAPI.list(sensor.id, accessToken, 100),
-          readingAPI.list(sensor.id, accessToken, 5000),
+          readingAPI.list(sensor.id, accessToken, 50000),
           datasetAPI.list(sensor.id, accessToken),
           merkleAPI.getHourlyRoot(sensor.id, accessToken).catch(() => ({ merkleRoot: '' })),
         ]);

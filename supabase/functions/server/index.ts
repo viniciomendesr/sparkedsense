@@ -137,19 +137,37 @@ const getSensorReadings = async (
     return readings;
   }
 
-  // Query sensor_readings from PostgreSQL
-  let query = supabase
-    .from('sensor_readings')
-    .select('id, timestamp, data')
-    .eq('nft_address', nftAddress)
-    .order('timestamp', { ascending: false });
+  // Query sensor_readings from PostgreSQL.
+  // Supabase PostgREST caps responses at 1000 rows; paginate via .range() when
+  // the caller asks for more (the historical chart, for example).
+  const PAGE_SIZE = 1000;
+  const target = options?.limit ?? PAGE_SIZE;
+  const rows: any[] = [];
+  let offset = 0;
 
-  if (options?.since) query = query.gte('timestamp', options.since.toISOString());
-  if (options?.until) query = query.lte('timestamp', options.until.toISOString());
-  if (options?.limit) query = query.limit(options.limit);
+  while (rows.length < target) {
+    const remaining = target - rows.length;
+    const fetchCount = Math.min(PAGE_SIZE, remaining);
+    let q = supabase
+      .from('sensor_readings')
+      .select('id, timestamp, data')
+      .eq('nft_address', nftAddress)
+      .order('timestamp', { ascending: false })
+      .range(offset, offset + fetchCount - 1);
 
-  const { data: rows, error } = await query;
-  if (error || !rows) return [];
+    if (options?.since) q = q.gte('timestamp', options.since.toISOString());
+    if (options?.until) q = q.lte('timestamp', options.until.toISOString());
+
+    const { data, error } = await q;
+    if (error) {
+      console.error('getSensorReadings PG page error:', error.message);
+      break;
+    }
+    if (!data || data.length === 0) break;
+    rows.push(...data);
+    if (data.length < fetchCount) break; // reached end
+    offset += data.length;
+  }
 
   // Map PG rows to KV format
   const sensorType = sensor?.type || 'temperature';

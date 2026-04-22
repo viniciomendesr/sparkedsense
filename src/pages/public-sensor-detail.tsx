@@ -54,7 +54,7 @@ export function PublicSensorDetailPage({
         setLoading(true);
         const [readingsData, historicalData, datasetsData] = await Promise.all([
           publicAPI.getPublicReadings(sensor.id, 100),
-          publicAPI.getPublicReadings(sensor.id, 5000),
+          publicAPI.getPublicReadings(sensor.id, 50000),
           publicAPI.getPublicDatasets(sensor.id),
         ]);
 
@@ -419,9 +419,29 @@ export function PublicSensorDetailPage({
             mode="live"
             title="Live Data"
             unit={readings[0]?.unit || sensor.lastReading?.unit || ''}
-            className="mb-4"
+            className="mb-6"
           />
+        </div>
 
+        {/* Historical Data Feed */}
+        <div className="mb-6">
+          <div className="flex items-center gap-3 mb-4">
+            <Clock className="w-5 h-5 text-primary" />
+            <h2 style={{ fontSize: '1.25rem', fontWeight: 600, color: 'var(--text-primary)' }}>
+              Historical Data Feed
+            </h2>
+          </div>
+
+          <SensorChart
+            readings={historicalReadings}
+            mode="historical"
+            title="Historical Data"
+            unit={historicalReadings[0]?.unit || sensor.lastReading?.unit || ''}
+          />
+        </div>
+
+        {/* Recent Readings Feed */}
+        <div className="mb-6">
           {/* Recent Readings Table */}
           <Card className="p-6 bg-card border-border">
             <div className="flex items-center justify-between mb-2">
@@ -558,23 +578,6 @@ export function PublicSensorDetailPage({
               </div>
             </div>
           </Card>
-        </div>
-
-        {/* Historical Data Feed */}
-        <div className="mb-6">
-          <div className="flex items-center gap-3 mb-4">
-            <Clock className="w-5 h-5 text-primary" />
-            <h2 style={{ fontSize: '1.25rem', fontWeight: 600, color: 'var(--text-primary)' }}>
-              Historical Data Feed
-            </h2>
-          </div>
-
-          <SensorChart
-            readings={historicalReadings}
-            mode="historical"
-            title="Historical Data"
-            unit={historicalReadings[0]?.unit || sensor.lastReading?.unit || ''}
-          />
         </div>
 
         {/* Datasets Section */}
