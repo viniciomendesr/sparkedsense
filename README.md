@@ -20,11 +20,14 @@ Applications being built on top of Sparked Sense include **retail/customer analy
 - **Commodity hardware first** — ~R$15 ESP8266 is the baseline; any microcontroller with WiFi and a crypto library works
 - **Cryptographic device identity** — secp256k1 key pairs generated on-device, persisted in EEPROM
 - **Signed data ingestion** — every reading carries a signature verified on the backend before storage
+- **Sensor-agnostic envelope** — CloudEvents 1.0 + SenML ingestion ([ADR-010](docs/adr/010-sensor-agnostic-ingestion-envelope.md)): one `POST /reading` endpoint accepts environmental telemetry, ML inferences, transcriptions, and custom modalities under reverse-DNS type namespaces
 - **Binary Merkle tree with inclusion proofs** — client-side and server-side verification via Web Crypto API
 - **Real-time streaming** — Supabase Postgres CDC pushes readings to connected dashboards
-- **WiFi geolocation** — devices locate themselves via nearby AP scan (Apple WiFi DB via Cloudflare Worker), no GPS needed
+- **Crypto-style charts** — Live Data + Historical Data feeds with stats header (current, Δ, %Δ), gradient area fill, timeframe selector (1H/6H/1D/1W/All), and brush zoom
+- **WiFi geolocation with neighborhood** — devices locate themselves via nearby AP scan (Apple WiFi DB via Cloudflare Worker), reverse-geocoded label includes `suburb → city → state → country`
 - **On-chain anchoring** — dataset Merkle roots anchored to Solana devnet
 - **Public audit pages** — anyone can verify dataset integrity without trusting the operator
+- **Hardened Postgres** — RLS enforced on `devices`/`sensor_readings`/`sensor_metrics`; service-role-only write path; sensitive columns (MAC address, owner-scoped metadata) not exposed via direct PostgREST
 - **Fully open source** — firmware, backend, frontend, and infrastructure decisions documented in ADRs
 
 ---
@@ -47,8 +50,10 @@ Applications being built on top of Sparked Sense include **retail/customer analy
 │  WIFI GEOLOCATION: Cloudflare Worker                          │
 │     • Apple WiFi DB reverse lookup from BSSID scan            │
 │                                                               │
-│  DATABASE: Supabase PostgreSQL                                │
-│     • devices / sensor_readings (PG) / kv_store (metadata)    │
+│  DATABASE: Supabase PostgreSQL (RLS enforced)                 │
+│     • devices / sensor_readings (legacy)                      │
+│     • readings (CloudEvents envelopes, ADR-010)               │
+│     • kv_store (sensor metadata + datasets)                   │
 │                                                               │
 │  BLOCKCHAIN: Solana Devnet                                    │
 │     • Merkle root anchoring                                   │
@@ -147,12 +152,17 @@ Endpoints are exposed through Supabase Edge Functions.
 | Endpoint | Method | Description |
 |-----------|--------|-------------|
 | `/public/sensors` | GET | List public sensors |
-| `/public/sensors/:id` | GET | Sensor detail |
+| `/public/sensors/:id` | GET | Sensor detail (enriched with `totalReadingsCount`, `totalDataBytes`) |
 | `/public/sensors/featured` | GET | Featured sensors for homepage |
 | `/public/sensors/:id/hourly-merkle` | GET | Merkle root + leaves for the last hour |
 | `/public/sensors/:sensorId/merkle-proof/:leafIndex` | GET | Inclusion proof for a specific leaf |
+| `/public/readings/:sensorId` | GET | Legacy readings feed (paginated server-side, `?limit=N`) |
+| `/public/readings-v2/:sensorId` | GET | CloudEvents envelope feed (ADR-010), optional `?type=` filter |
 | `/server/register-device` | POST | Two-step secp256k1 challenge-response registration |
-| `/server/sensor-data` | POST | Signed reading ingestion |
+| `/server/sensor-data` | POST | Signed reading ingestion (legacy path, dual-writes to the envelope feed) |
+| `/server/reading` | POST | CloudEvents envelope ingestion (ADR-010) |
+| `/server/sensors/:id` | PUT | Owner-only: update `name`, `description`, or `visibility` (allowlist) |
+| `/server/sensors/:id/refresh-location` | POST | Owner-only: re-derive location label from stored lat/lng |
 | `/server/device-location` | POST | WiFi scan → geolocation lookup |
 | `/verify/merkle` | POST | Server-side Merkle proof verification |
 
@@ -160,10 +170,20 @@ Endpoints are exposed through Supabase Edge Functions.
 
 ## Real-time data flow
 
+### Legacy path (`POST /server/sensor-data`)
+
 1. Device signs JSON payload with its secp256k1 private key
 2. Edge Function verifies the signature and writes to `sensor_readings` (PostgreSQL)
-3. Supabase emits a Postgres CDC event
-4. Frontend dashboards update automatically
+3. Edge Function dual-writes the payload as an `io.sparkedsense.sensor.environmental` envelope into the ADR-010 `readings` table
+4. Supabase emits a Postgres CDC event
+5. Frontend dashboards update automatically
+
+### Envelope path (`POST /server/reading`, ADR-010)
+
+1. Device (or MEC gateway) signs a CloudEvents 1.0 envelope over canonical JSON with `{specversion, id, source, type, time, datacontenttype, data}`
+2. Edge Function validates envelope shape, resolves device identity via `source: spark:device:<pubkey>`, verifies signature, and validates the typed payload (SenML for telemetry, typed JSON for inferences/transcriptions)
+3. Writes to the `readings` table with the full envelope + device FK
+4. Frontend dispatches on `event_type` to the appropriate renderer (`src/components/renderers/`)
 
 ```typescript
 supabase

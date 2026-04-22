@@ -303,15 +303,51 @@ Format inspired by [Keep a Changelog](https://keepachangelog.com/).
 - [x] Page `/demo-claro` consuming the new `/public/readings-v2/:sensorId` feed; verified end-to-end with real hardware (11 envelopes rendered live from the production DHT11).
 - [ ] ESP32-S3 acoustic client emits envelopes directly (not wrapped); MacBook whisper gateway emits envelopes — pending firmware/client code for the demo.
 
-> Implementation order and risks documented in [ADR-010](adr/010-sensor-agnostic-ingestion-envelope.md). This phase is intentionally open until the demo stabilizes, at which point items 8–9 of the ADR's implementation order (deprecation window, quickstart documentation) move to Phase 14.
+> Implementation order and risks documented in [ADR-010](adr/010-sensor-agnostic-ingestion-envelope.md). This phase is intentionally open until the demo stabilizes, at which point items 8–9 of the ADR's implementation order (deprecation window, quickstart documentation) move to a future phase.
+
+---
+
+## Phase 14 — Pre-demo UX polish and security hardening (22 Apr 2026)
+
+**Contributor:** Vinicio Mendes (with AI assistance — Claude)
+
+### Added (sensor-agnostic envelope — ADR-010 continuation)
+- [ADR-011](adr/011-unsigned-dev-bypass-for-unported-devices.md): `signature: "unsigned_dev"` bypass accepted in `POST /server/reading` for devices whose firmware has not yet ported the secp256k1 signing pipeline. Device identity still enforced via the `source` → registered `public_key` lookup. `TODO(ADR-011)` anchor in the code marks the removal trigger (Node 2 ESP32-S3 port landing with 100 consecutive valid signatures).
+
+### Added (sensor UX)
+- **Edit title/description from the owner view** ([src/components/edit-sensor-dialog.tsx](../src/components/edit-sensor-dialog.tsx)): pencil icon next to the header, dialog with validation, `sensorAPI.update` call. Backend allowlist restricts mutable fields to `['name', 'description', 'visibility']` — `location`/`latitude`/`longitude` explicitly rejected server-side because they are firmware-derived signals (preserves ADR-003 trust model).
+- **Location label includes neighborhood** ([supabase/functions/server/index.ts](../supabase/functions/server/index.ts) `buildLocationText`): reverse-geocode prioritises `suburb → neighbourhood → quarter → city_district → residential` before the city. Existing sensor `36c1d3d2-...` self-updated from `São Paulo, São Paulo, Brasil` to `Pinheiros, São Paulo, São Paulo, Brasil` via the new `POST /sensors/:id/refresh-location` endpoint (owner-only, re-geocodes from stored lat/lng only — does not accept client-supplied coordinates).
+- **Chart redesign in crypto style** ([src/components/sensor-chart.tsx](../src/components/sensor-chart.tsx)): shared `SensorChart` component with stats header (current value, absolute delta, percentage delta, trend-coloured), Min/Max/Avg/Points badges, gradient area fill, dashed reference line at the mean, and a brush for zooming the historical range. Modes: `live` (last 60 points, no range selector) and `historical` (1H/6H/1D/1W/All selector + brush). Replaces the previous plain `LineChart` in both owner and public sensor detail pages.
+- **Historical Data Feed section** shown below Real-Time Data Feed on both pages; owner view flattened the tab layout so `Live Data` and `Historical Data` live side by side inside `Live Stream`, matching the public layout.
+- **`Last Updated` syncs with the latest reading** on the public page (was tied to `sensor.updatedAt` which lags the ingestion stream).
+
+### Changed (backend)
+- `getSensorReadings` now paginates via `.range(offset, offset + 999)` up to the requested limit. Supabase PostgREST silently caps responses at 1000 rows per default config; the historical chart was hitting that cap and showing an incomplete `Max` value. Pagination lets the 50,000-point historical query return the real dataset.
+- `POST /sensor-data` dual-writes each reading into the new `readings` table as an `io.sparkedsense.sensor.environmental` envelope. The live DHT11 now populates both the legacy `sensor_readings` path and the ADR-010 feed consumed by `/demo-claro`.
+- `sensorAPI.update` allowlist added: `['name', 'description', 'visibility']`. Any other field in the request body is silently discarded server-side.
+
+### Fixed (deployment)
+- **Vercel SPA 404 on refresh**: added `vercel.json` with a catch-all rewrite to `/index.html`. Previously, refreshing on any client-side route (e.g. `/public-sensors`) bypassed React Router and hit Vercel's file-system 404.
+- **`.DS_Store` untracked from git** and added to both the project `.gitignore` and the machine-global `~/.gitignore_global`.
+
+### Security (migration `004_security_hardening.sql`)
+Supabase advisor reported 5 ERROR + 4 WARN; migration 004 drove it to 0 ERROR + 1 WARN + 2 INFO.
+
+- Enabled RLS on `devices`, `sensor_readings`, `sensor_metrics`.
+- Added owner-only SELECT policy on `devices` — `mac_address` (PII) is no longer exposed to anon or to other owners via direct PostgREST.
+- Recreated `sensor_readings_compat` view with `WITH (security_invoker = true)` so the view respects the caller's RLS instead of the creator's.
+- Replaced the `USING (true)` policy on `kv_store_4a89e1c9` with `TO service_role` scope.
+- Pinned `search_path = public, pg_catalog` on `update_updated_at_column` and `update_sensor_metrics` to prevent schema-shadowing attacks.
+- Edge function keeps working because `SERVICE_ROLE` bypasses RLS. PostgREST calls from anon/authenticated now correctly return empty arrays for `devices` and `sensor_readings`.
+- Remaining WARN (`auth_leaked_password_protection`) must be toggled in the Supabase Auth dashboard — not actionable via SQL.
 
 ---
 
 ## Current status
 
-**Implemented:** End-to-end DePIN flow with secp256k1 cryptographic authentication, simulated digital identity (nftAddress), real-time dashboard with automatic polling for real sensors, binary Merkle tree with inclusion proofs for dataset integrity verification (client-side and server-side), PostgreSQL as canonical storage for sensor readings (KV store retained only for sensor metadata and datasets), Solana devnet wallet under project control, homepage with Featured Public Sensors, WiFi-based geolocation via Apple WiFi DB through Cloudflare Worker. Structured documentation with ADR index and timeline in `docs/`.
+**Implemented:** End-to-end DePIN flow with secp256k1 cryptographic authentication, simulated digital identity (nftAddress), real-time dashboard with crypto-style live + historical charts (Min/Max/Avg/Points, gradient fill, timeframe selector, brush zoom), binary Merkle tree with inclusion proofs for dataset integrity verification (client-side and server-side), PostgreSQL as canonical storage for sensor readings (KV store retained only for sensor metadata and datasets), Solana devnet wallet under project control, homepage with Featured Public Sensors, WiFi-based geolocation with neighborhood label via Apple WiFi DB through Cloudflare Worker, owner-editable sensor name/description, RLS hardening across `devices`/`sensor_readings`/`sensor_metrics` and security_invoker view. Structured documentation with ADR index and timeline in `docs/`.
 
-**In progress (Phase 13, target 2026-04-24):** Sensor-agnostic ingestion envelope per [ADR-010](adr/010-sensor-agnostic-ingestion-envelope.md) — CloudEvents + SenML adoption, `POST /reading` endpoint, renderer framework for heterogeneous modalities (environmental telemetry, ML classification, transcription) for the demo.
+**In progress (Phase 13, target 2026-04-24):** Sensor-agnostic ingestion envelope per [ADR-010](adr/010-sensor-agnostic-ingestion-envelope.md) — CloudEvents + SenML adoption, `POST /reading` endpoint live with dual-write from legacy `/sensor-data`, renderer framework for heterogeneous modalities (environmental telemetry, ML classification, transcription). Remaining: ESP32-S3 acoustic client + MacBook whisper gateway emitting envelopes directly. During the demo window, Node 2 events use the [ADR-011](adr/011-unsigned-dev-bypass-for-unported-devices.md) `unsigned_dev` bypass until the signing pipeline is ported.
 
 **Next steps (from ADR-007, deferred until post-demo):**
 1. ~~Fix Merkle tree implementation~~ — done (Phase 8)
@@ -320,4 +356,4 @@ Format inspired by [Keep a Changelog](https://keepachangelog.com/).
 4. Define anchoring transaction format (Memo Program vs metadata update vs PDA)
 5. Implement real Solana devnet integration (NFT minting + dataset anchoring)
 
-**Also pending (post-demo):** Firmware resilience (WiFi reconnection, watchdog, HTTPS timeout — see audit), backend modularization (`index.ts` split), open source documentation, ESP8266 migration from legacy `POST /sensor-data` to native envelope emission (see ADR-010 item 8).
+**Also pending (post-demo):** ESP32-S3 secp256k1 signing pipeline port (removes [ADR-011](adr/011-unsigned-dev-bypass-for-unported-devices.md) bypass), firmware resilience (WiFi reconnection, watchdog, HTTPS timeout — see audit), backend modularization (`index.ts` split), open source documentation, ESP8266 migration from legacy `POST /sensor-data` to native envelope emission (see ADR-010 item 8), server-side downsampling (LTTB) for charts as sensors grow past ~200k readings, Supabase Auth `leaked_password_protection` toggle via dashboard.
