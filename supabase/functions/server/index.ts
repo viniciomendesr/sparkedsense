@@ -1937,22 +1937,37 @@ app.post("/server/reading", async (c) => {
 
 // GET /server/public/readings-v2/:sensorId
 // Returns raw envelopes for a device (public access for sensors with visibility='public').
+// KV sensor `id` ≠ `devices.id`; resolve via claim_token before filtering the readings table.
 app.get("/server/public/readings-v2/:sensorId", async (c) => {
   try {
     const sensorId = c.req.param('sensorId');
     const limit = parseInt(c.req.query('limit') || '100');
     const eventType = c.req.query('type');
 
-    // visibility gate via KV sensor
     const allSensors = await kv.getByPrefix('sensor:');
     const sensor = allSensors.find((s: any) => s.id === sensorId);
     if (!sensor) return c.json({ error: 'Sensor not found' }, 404);
     if (sensor.visibility !== 'public') return c.json({ error: 'Sensor readings are not public' }, 403);
 
+    // Translate KV sensor id → devices.id via claim_token
+    let deviceId: string | null = null;
+    if (sensor.claimToken) {
+      const { data: dev } = await supabase
+        .from('devices')
+        .select('id')
+        .eq('claim_token', sensor.claimToken)
+        .maybeSingle();
+      if (dev?.id) deviceId = dev.id as string;
+    }
+    if (!deviceId) {
+      // No linked real device (mock sensor or unclaimed); nothing in readings table to return
+      return c.json({ readings: [] });
+    }
+
     let query = supabase
       .from('readings')
       .select('*')
-      .eq('device_id', sensorId)
+      .eq('device_id', deviceId)
       .order('time', { ascending: false })
       .limit(limit);
 
