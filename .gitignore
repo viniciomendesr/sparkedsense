@@ -8,3 +8,6 @@ supabase/.temp/
 
 .claude
 .vscode
+
+.DS_Store
+**/.DS_Store
