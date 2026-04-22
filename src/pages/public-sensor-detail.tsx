@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { publicAPI } from '../lib/api';
+import { formatDataSize } from '../lib/format';
 import { verifyMerkleRoot } from '../lib/merkle';
 import { generateHistoricalReadings, generateLiveReading } from '../lib/mock-data';
 import { ImageWithFallback } from '../components/figma/ImageWithFallback';
@@ -330,16 +331,29 @@ export function PublicSensorDetailPage({
                     </p>
                   </div>
                 )}
-                {readings.length > 0 && (
+                {(sensor.totalReadingsCount ?? 0) > 0 && (
                   <div>
                     <div className="flex items-center gap-1.5 mb-1">
                       <Database className="w-3 h-3 text-muted-foreground" />
                       <span className="text-xs" style={{ color: 'var(--text-muted)' }}>
-                        Data Processed
+                        Readings
                       </span>
                     </div>
                     <p className="text-sm" style={{ fontWeight: 500, color: 'var(--text-primary)' }}>
-                      {(datasets.reduce((sum, d) => sum + (d.readingsCount || 0), 0) + readings.length).toLocaleString()} readings
+                      {(sensor.totalReadingsCount ?? 0).toLocaleString()}
+                    </p>
+                  </div>
+                )}
+                {(sensor.totalDataBytes ?? 0) > 0 && (
+                  <div>
+                    <div className="flex items-center gap-1.5 mb-1">
+                      <Database className="w-3 h-3 text-muted-foreground" />
+                      <span className="text-xs" style={{ color: 'var(--text-muted)' }}>
+                        Stored
+                      </span>
+                    </div>
+                    <p className="text-sm" style={{ fontWeight: 500, color: 'var(--text-primary)' }}>
+                      {formatDataSize(sensor.totalDataBytes ?? 0)}
                     </p>
                   </div>
                 )}

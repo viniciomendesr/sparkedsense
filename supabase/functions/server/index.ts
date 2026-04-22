@@ -546,6 +546,10 @@ app.post("/server/sensors", async (c) => {
   }
 });
 
+// Average on-disk size of a single reading record (JSON payload + KV key + signature).
+// Used to approximate the human-readable "stored" metric.
+const AVG_READING_BYTES = 206;
+
 // Fields a user may change via PUT /sensors/:id.
 // location/latitude/longitude/locationAccuracy come from the device firmware and
 // must never be mutable by the user — changing them would break the DePIN trust model.
@@ -1207,6 +1211,7 @@ app.get("/server/public/sensors/featured", async (c) => {
           lastReading: lastReadings[0] || null,
           publicDatasetsCount: publicDatasets.length,
           totalReadingsCount,
+          totalDataBytes: totalReadingsCount * AVG_READING_BYTES,
           verifiedDatasetsCount: verifiedDatasets.length,
           totalVerified,
           hourlyMerkleRoot,
@@ -1236,17 +1241,25 @@ app.get("/server/public/sensors/:id", async (c) => {
     const sensorId = c.req.param('id');
     const allSensors = await kv.getByPrefix('sensor:');
     const sensor = allSensors.find((s: any) => s.id === sensorId);
-    
+
     if (!sensor) {
       return c.json({ error: 'Sensor not found' }, 404);
     }
-    
+
     // Check if sensor visibility is public
     if (sensor.visibility !== 'public') {
       return c.json({ error: 'Sensor is not public' }, 403);
     }
 
-    return c.json({ sensor });
+    const totalReadingsCount = await countSensorReadings(sensorId, sensor);
+
+    return c.json({
+      sensor: {
+        ...sensor,
+        totalReadingsCount,
+        totalDataBytes: totalReadingsCount * AVG_READING_BYTES,
+      },
+    });
   } catch (error) {
     console.error('Failed to fetch public sensor:', error);
     return c.json({ error: 'Failed to fetch public sensor' }, 500);
