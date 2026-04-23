@@ -782,6 +782,10 @@ app.delete("/server/sensors/:id", async (c) => {
 // Reading Routes
 // ======================
 
+// Project each reading to only the fields the chart uses.
+// Saves ~70% bytes when the caller only needs to render a time series.
+const slimReading = (r: any) => ({ timestamp: r.timestamp, value: r.value, unit: r.unit });
+
 app.get("/server/readings/:sensorId", async (c) => {
   try {
     const user = await getUserFromToken(c.req.raw);
@@ -791,11 +795,12 @@ app.get("/server/readings/:sensorId", async (c) => {
 
     const sensorId = c.req.param('sensorId');
     const limit = parseInt(c.req.query('limit') || '100');
-    
+    const slim = c.req.query('slim') === '1';
+
     const sensor = await kv.get(`sensor:${user.id}:${sensorId}`);
     const sortedReadings = await getSensorReadings(sensorId, sensor, { limit });
 
-    return c.json({ readings: sortedReadings });
+    return c.json({ readings: slim ? sortedReadings.map(slimReading) : sortedReadings });
   } catch (error) {
     console.error('Failed to fetch readings:', error);
     return c.json({ error: 'Failed to fetch readings' }, 500);
@@ -1471,22 +1476,23 @@ app.get("/server/public/readings/:sensorId", async (c) => {
   try {
     const sensorId = c.req.param('sensorId');
     const limit = parseInt(c.req.query('limit') || '100');
-    
+    const slim = c.req.query('slim') === '1';
+
     // Check if sensor visibility is public
     const allSensors = await kv.getByPrefix('sensor:');
     const sensor = allSensors.find((s: any) => s.id === sensorId);
-    
+
     if (!sensor) {
       return c.json({ error: 'Sensor not found' }, 404);
     }
-    
+
     if (sensor.visibility !== 'public') {
       return c.json({ error: 'Sensor readings are not public' }, 403);
     }
-    
+
     const sortedReadings = await getSensorReadings(sensorId, sensor, { limit });
 
-    return c.json({ readings: sortedReadings });
+    return c.json({ readings: slim ? sortedReadings.map(slimReading) : sortedReadings });
   } catch (error) {
     console.error('Failed to fetch public readings:', error);
     return c.json({ error: 'Failed to fetch public readings' }, 500);

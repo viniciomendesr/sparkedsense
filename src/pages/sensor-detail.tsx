@@ -103,36 +103,36 @@ export function SensorDetailPage({
     }
   };
 
-  // Load initial data
+  // Load initial data in two waves:
+  //  Wave 1 (blocks TTI): last 100 readings + datasets + merkle root.
+  //  Wave 2 (deferred via requestIdleCallback): 25k slim historical readings.
+  // Each fetch is independent — one failing must not wipe the others.
   useEffect(() => {
-    const loadData = async () => {
-      if (!accessToken) return;
+    if (!accessToken) return;
 
+    let cancelled = false;
+
+    const parseReadings = (rows: Reading[]) =>
+      rows.map((r) => ({ ...r, timestamp: new Date(r.timestamp) }));
+    const parseDatasets = (rows: Dataset[]) =>
+      rows.map((d) => ({
+        ...d,
+        startDate: new Date(d.startDate),
+        endDate: new Date(d.endDate),
+        createdAt: new Date(d.createdAt),
+      }));
+    const fallback = sensor.mode === 'mock'
+      ? generateHistoricalReadings(sensor.id, sensor.type, 60)
+      : [];
+
+    const loadCritical = async () => {
       setLoading(true);
-
-      // Independent fetches — one failing must not wipe the others.
-      // Historical (large limit) is capped at 10k to stay within the edge
-      // function's wall-clock budget; larger limits were triggering HTTP 546.
-      const parseReadings = (rows: Reading[]) =>
-        rows.map((r) => ({ ...r, timestamp: new Date(r.timestamp) }));
-      const parseDatasets = (rows: Dataset[]) =>
-        rows.map((d) => ({
-          ...d,
-          startDate: new Date(d.startDate),
-          endDate: new Date(d.endDate),
-          createdAt: new Date(d.createdAt),
-        }));
-
-      const [readingsRes, historicalRes, datasetsRes, merkleRes] = await Promise.allSettled([
+      const [readingsRes, datasetsRes, merkleRes] = await Promise.allSettled([
         readingAPI.list(sensor.id, accessToken, 100),
-        readingAPI.list(sensor.id, accessToken, 25000),
         datasetAPI.list(sensor.id, accessToken),
         merkleAPI.getHourlyRoot(sensor.id, accessToken),
       ]);
-
-      const fallback = sensor.mode === 'mock'
-        ? generateHistoricalReadings(sensor.id, sensor.type, 60)
-        : [];
+      if (cancelled) return;
 
       if (readingsRes.status === 'fulfilled') {
         const parsed = parseReadings(readingsRes.value);
@@ -142,20 +142,10 @@ export function SensorDetailPage({
         setReadings(sensor.mode === 'real' ? [] : fallback);
       }
 
-      if (historicalRes.status === 'fulfilled') {
-        const parsed = parseReadings(historicalRes.value);
-        setHistoricalReadings(parsed.length > 0 ? parsed : (sensor.mode === 'real' ? [] : fallback));
-      } else {
-        console.error('Failed to load historical readings:', historicalRes.reason);
-        // Keep previous value if we had one; otherwise fallback.
-        setHistoricalReadings((prev) => prev.length > 0 ? prev : (sensor.mode === 'real' ? [] : fallback));
-      }
-
       if (datasetsRes.status === 'fulfilled') {
         setDatasets(parseDatasets(datasetsRes.value));
       } else {
         console.error('Failed to load datasets:', datasetsRes.reason);
-        // Preserve any optimistically-added datasets instead of wiping them.
       }
 
       if (merkleRes.status === 'fulfilled') {
@@ -163,10 +153,42 @@ export function SensorDetailPage({
       }
 
       setLoading(false);
-      return;
     };
 
-    loadData();
+    const loadHistorical = async () => {
+      try {
+        // Slim payload — only timestamp/value/unit, no hash/signature. LTTB in
+        // the chart downsamples further for rendering; we still fetch all rows
+        // so Min/Max/Avg stats reflect the true dataset.
+        const rows = await readingAPI.list(sensor.id, accessToken, 25000, { slim: true });
+        if (cancelled) return;
+        // Skip Date parsing on this path — SensorChart handles string timestamps.
+        setHistoricalReadings(rows.length > 0 ? rows : (sensor.mode === 'real' ? [] : fallback));
+      } catch (err) {
+        console.error('Failed to load historical readings:', err);
+      }
+    };
+
+    loadCritical();
+
+    // Defer the heavy 25k fetch until the browser is idle, with a 1500ms
+    // fallback so the chart doesn't stay empty on always-busy main threads.
+    const idle = (window as any).requestIdleCallback as
+      | ((cb: () => void, opts?: { timeout?: number }) => number)
+      | undefined;
+    let idleId: number | undefined;
+    let fallbackId: number | undefined;
+    if (idle) {
+      idleId = idle(() => loadHistorical(), { timeout: 1500 });
+    } else {
+      fallbackId = window.setTimeout(() => loadHistorical(), 200);
+    }
+
+    return () => {
+      cancelled = true;
+      if (idleId && (window as any).cancelIdleCallback) (window as any).cancelIdleCallback(idleId);
+      if (fallbackId) clearTimeout(fallbackId);
+    };
   }, [sensor.id, sensor.type, sensor.mode, accessToken]);
 
   // Simulate live streaming for MOCK sensors

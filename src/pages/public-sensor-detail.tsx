@@ -47,63 +47,78 @@ export function PublicSensorDetailPage({
   const [verifyHashInput, setVerifyHashInput] = useState('');
   const [verifyMerkleInput, setVerifyMerkleInput] = useState('');
 
-  // Load initial data
+  // Load initial data in two waves:
+  //  Wave 1 (blocks TTI): last 100 readings + datasets.
+  //  Wave 2 (deferred): 25k slim historical readings.
   useEffect(() => {
-    const loadData = async () => {
+    let cancelled = false;
+
+    const fallback = sensor.mode === 'mock'
+      ? generateHistoricalReadings(sensor.id, sensor.type, 60)
+      : [];
+
+    const loadCritical = async () => {
       try {
         setLoading(true);
-        const [readingsData, historicalData, datasetsData] = await Promise.all([
+        const [readingsRes, datasetsRes] = await Promise.allSettled([
           publicAPI.getPublicReadings(sensor.id, 100),
-          publicAPI.getPublicReadings(sensor.id, 25000),
           publicAPI.getPublicDatasets(sensor.id),
         ]);
+        if (cancelled) return;
 
-        const parsedReadings = readingsData.map(r => ({
-          ...r,
-          timestamp: new Date(r.timestamp),
-        }));
-
-        const parsedHistorical = historicalData.map(r => ({
-          ...r,
-          timestamp: new Date(r.timestamp),
-        }));
-
-        const parsedDatasets = datasetsData.map(d => ({
-          ...d,
-          startDate: new Date(d.startDate),
-          endDate: new Date(d.endDate),
-          createdAt: new Date(d.createdAt),
-        }));
-
-        // For real sensors, only show readings if they exist from API
-        // For mock sensors, fall back to generated data if no API data
-        if (sensor.mode === 'real') {
-          setReadings(parsedReadings);
-          setHistoricalReadings(parsedHistorical);
+        if (readingsRes.status === 'fulfilled') {
+          const parsed = readingsRes.value.map(r => ({ ...r, timestamp: new Date(r.timestamp) }));
+          setReadings(parsed.length > 0 ? parsed : (sensor.mode === 'real' ? [] : fallback));
         } else {
-          const fallback = generateHistoricalReadings(sensor.id, sensor.type, 60);
-          setReadings(parsedReadings.length > 0 ? parsedReadings : fallback);
-          setHistoricalReadings(parsedHistorical.length > 0 ? parsedHistorical : fallback);
+          console.error('Failed to load readings:', readingsRes.reason);
+          setReadings(sensor.mode === 'real' ? [] : fallback);
         }
-        setDatasets(parsedDatasets);
-      } catch (error: any) {
-        console.error('Failed to load sensor data:', error);
-        // For real sensors, keep readings empty on error
-        // For mock sensors, fall back to mock data
-        if (sensor.mode === 'mock') {
-          const historical = generateHistoricalReadings(sensor.id, sensor.type, 60);
-          setReadings(historical);
-          setHistoricalReadings(historical);
+
+        if (datasetsRes.status === 'fulfilled') {
+          const parsed = datasetsRes.value.map(d => ({
+            ...d,
+            startDate: new Date(d.startDate),
+            endDate: new Date(d.endDate),
+            createdAt: new Date(d.createdAt),
+          }));
+          setDatasets(parsed);
         } else {
-          setReadings([]);
-          setHistoricalReadings([]);
+          console.error('Failed to load datasets:', datasetsRes.reason);
         }
       } finally {
-        setLoading(false);
+        if (!cancelled) setLoading(false);
       }
     };
 
-    loadData();
+    const loadHistorical = async () => {
+      try {
+        // Slim — timestamps as strings; SensorChart handles that.
+        const rows = await publicAPI.getPublicReadings(sensor.id, 25000, { slim: true });
+        if (cancelled) return;
+        setHistoricalReadings(rows.length > 0 ? rows : (sensor.mode === 'real' ? [] : fallback));
+      } catch (err) {
+        console.error('Failed to load historical readings:', err);
+      }
+    };
+
+    loadCritical();
+
+    const idle = (window as any).requestIdleCallback as
+      | ((cb: () => void, opts?: { timeout?: number }) => number)
+      | undefined;
+    let idleId: number | undefined;
+    let fallbackId: number | undefined;
+    if (idle) {
+      idleId = idle(() => loadHistorical(), { timeout: 1500 });
+    } else {
+      fallbackId = window.setTimeout(() => loadHistorical(), 200);
+    }
+
+    return () => {
+      cancelled = true;
+      if (idleId && (window as any).cancelIdleCallback) (window as any).cancelIdleCallback(idleId);
+      if (fallbackId) clearTimeout(fallbackId);
+    };
   }, [sensor.id, sensor.type, sensor.mode]);
 
   // Simulate live streaming for public view

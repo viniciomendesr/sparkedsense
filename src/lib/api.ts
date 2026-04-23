@@ -190,9 +190,11 @@ export const sensorAPI = {
 
 // Reading APIs
 export const readingAPI = {
-  list: async (sensorId: string, accessToken: string, limit = 100) => {
+  list: async (sensorId: string, accessToken: string, limit = 100, opts?: { slim?: boolean }) => {
+    const params = new URLSearchParams({ limit: String(limit) });
+    if (opts?.slim) params.set('slim', '1');
     const response = await fetch(
-      `${API_BASE}/readings/${sensorId}?limit=${limit}`,
+      `${API_BASE}/readings/${sensorId}?${params.toString()}`,
       {
         method: "GET",
         headers: getAuthHeaders(accessToken),
@@ -471,9 +473,11 @@ export const publicAPI = {
     return data.datasets as Dataset[];
   },
 
-  getPublicReadings: async (sensorId: string, limit = 100) => {
+  getPublicReadings: async (sensorId: string, limit = 100, opts?: { slim?: boolean }) => {
+    const params = new URLSearchParams({ limit: String(limit) });
+    if (opts?.slim) params.set('slim', '1');
     const response = await fetch(
-      `${API_BASE}/public/readings/${sensorId}?limit=${limit}`,
+      `${API_BASE}/public/readings/${sensorId}?${params.toString()}`,
       {
         method: "GET",
         headers: getAuthHeaders(),

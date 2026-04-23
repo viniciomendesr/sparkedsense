@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { memo, useMemo, useState } from 'react';
 import {
   AreaChart,
   Area,
@@ -14,6 +14,11 @@ import { Card } from './ui/card';
 import { Badge } from './ui/badge';
 import { TrendingUp, TrendingDown, Minus } from 'lucide-react';
 import type { Reading } from '../lib/types';
+import { lttb } from '../lib/lttb';
+
+// Target point count for the historical chart. Stats (min/max/avg/count) are
+// still computed from the full array — LTTB only reduces what Recharts renders.
+const HISTORICAL_RENDER_TARGET = 800;
 
 type Range = '1H' | '6H' | '1D' | '1W' | 'ALL';
 
@@ -58,7 +63,7 @@ interface SensorChartProps {
   className?: string;
 }
 
-export function SensorChart({ readings, mode, unit = '', title, liveWindow = 60, className }: SensorChartProps) {
+function SensorChartBase({ readings, mode, unit = '', title, liveWindow = 60, className }: SensorChartProps) {
   const [range, setRange] = useState<Range>('ALL');
 
   // Normalize + sort ascending by time
@@ -80,15 +85,26 @@ export function SensorChart({ readings, mode, unit = '', title, liveWindow = 60,
     return all.filter((r) => r.ts.getTime() >= since);
   }, [all, mode, range, liveWindow]);
 
+  // Downsample the historical series via LTTB before formatting for Recharts.
+  // Live mode already has ≤ liveWindow points (default 60) so skip it.
+  // Stats below are still computed from `visible` (full array) so Min/Max/Avg
+  // stay exact — LTTB only affects what the chart actually paints.
+  const renderPoints = useMemo(() => {
+    if (mode !== 'historical' || visible.length <= HISTORICAL_RENDER_TARGET) return visible;
+    const pairs: [number, number][] = visible.map((r) => [r.ts.getTime(), r.value]);
+    const reduced = lttb(pairs, HISTORICAL_RENDER_TARGET);
+    return reduced.map(([x, y]) => ({ ts: new Date(x), value: y }));
+  }, [visible, mode]);
+
   const series = useMemo(
     () =>
-      visible.map((r) => ({
+      renderPoints.map((r) => ({
         ts: r.ts.getTime(),
         value: r.value,
         time: r.ts.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
         fullTime: r.ts.toLocaleString(),
       })),
-    [visible],
+    [renderPoints],
   );
 
   const stats = useMemo(() => {
@@ -253,3 +269,18 @@ export function SensorChart({ readings, mode, unit = '', title, liveWindow = 60,
     </Card>
   );
 }
+
+// Wrap in React.memo with a shallow array-identity check so the 15s polling
+// that refreshes `readings` for the Live chart doesn't re-render the Historical
+// chart (which holds a different 25k-row array). The parent swaps whole arrays
+// when data actually changes; reference equality is enough.
+export const SensorChart = memo(SensorChartBase, (prev, next) => {
+  return (
+    prev.readings === next.readings &&
+    prev.mode === next.mode &&
+    prev.unit === next.unit &&
+    prev.title === next.title &&
+    prev.liveWindow === next.liveWindow &&
+    prev.className === next.className
+  );
+});
