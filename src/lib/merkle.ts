@@ -73,6 +73,101 @@ export async function computeMerkleRoot(readingHashes: string[]): Promise<string
   return current[0];
 }
 
+export interface MerkleTreeFull {
+  root: string;
+  leaves: string[]; // domain-separated leaf hashes
+  layers: string[][];
+}
+
+/**
+ * Build the full Merkle tree client-side so we can generate inclusion proofs
+ * for individual readings. Same algorithm as the backend's `buildTree`.
+ */
+export async function buildMerkleTreeFull(
+  readingHashes: string[],
+): Promise<MerkleTreeFull> {
+  if (readingHashes.length === 0) {
+    return { root: EMPTY_ROOT, leaves: [], layers: [[EMPTY_ROOT]] };
+  }
+
+  const leaves = await Promise.all(readingHashes.map((h) => sha256Hex(h)));
+  const layers: string[][] = [leaves];
+  let current = leaves;
+  while (current.length > 1) {
+    const next: string[] = [];
+    for (let i = 0; i < current.length; i += 2) {
+      const left = current[i];
+      const right = i + 1 < current.length ? current[i + 1] : current[i];
+      next.push(await sha256Hex(left + right));
+    }
+    layers.push(next);
+    current = next;
+  }
+  return { root: current[0], leaves, layers };
+}
+
+/**
+ * Generate an inclusion proof for the leaf at `leafIndex`.
+ * Returns the sibling hashes walked up from the leaf to the root.
+ */
+export function generateInclusionProof(
+  tree: MerkleTreeFull,
+  leafIndex: number,
+): { leafHash: string; proof: MerkleProofStep[] } {
+  if (leafIndex < 0 || leafIndex >= tree.leaves.length) {
+    throw new RangeError(`leafIndex ${leafIndex} out of range`);
+  }
+  const proof: MerkleProofStep[] = [];
+  let idx = leafIndex;
+  for (let layer = 0; layer < tree.layers.length - 1; layer++) {
+    const currentLayer = tree.layers[layer];
+    const isRight = idx % 2 === 1;
+    const siblingIdx = isRight ? idx - 1 : idx + 1;
+    const siblingHash =
+      siblingIdx < currentLayer.length
+        ? currentLayer[siblingIdx]
+        : currentLayer[idx]; // duplicate-last on odd
+    proof.push({ hash: siblingHash, position: isRight ? 'left' : 'right' });
+    idx = Math.floor(idx / 2);
+  }
+  return { leafHash: tree.leaves[leafIndex], proof };
+}
+
+/**
+ * Walk the proof step-by-step, returning each intermediate hash. Used by
+ * the UI to render the proof as a visible chain, not a single boolean.
+ */
+export async function traceInclusionProof(
+  leafHash: string,
+  proof: MerkleProofStep[],
+): Promise<
+  Array<{
+    step: number;
+    left: string;
+    right: string;
+    result: string;
+    siblingFromSide: 'left' | 'right';
+  }>
+> {
+  const trace: Array<{
+    step: number;
+    left: string;
+    right: string;
+    result: string;
+    siblingFromSide: 'left' | 'right';
+  }> = [];
+  let current = leafHash;
+  for (let i = 0; i < proof.length; i++) {
+    const step = proof[i];
+    const left = step.position === 'left' ? step.hash : current;
+    const right = step.position === 'left' ? current : step.hash;
+    const result = await sha256Hex(left + right);
+    trace.push({ step: i + 1, left, right, result, siblingFromSide: step.position });
+    current = result;
+  }
+  return trace;
+}
+
 /**
  * Reconstruct a Merkle root from an array of reading hashes and compare
  * it against the expected root.

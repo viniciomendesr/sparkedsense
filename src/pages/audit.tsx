@@ -7,16 +7,49 @@ import { Badge } from '../components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '../components/ui/dialog';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
-import { Copy, Check, CheckCircle2, ExternalLink, Shield, ArrowLeft, Mail, Info, Download, Upload, XCircle, Loader2 } from 'lucide-react';
+import { Copy, Check, CheckCircle2, ExternalLink, Shield, ArrowLeft, Mail, Info, Download, Upload, XCircle, Loader2, ChevronLeft, ChevronRight, Search } from 'lucide-react';
 import { publicAPI, datasetAPI } from '../lib/api';
 import { useAuth } from '../lib/auth-context';
 import { toast } from 'sonner@2.0.3';
-import { computeMerkleRoot } from '../lib/merkle';
+import {
+  computeMerkleRoot,
+  buildMerkleTreeFull,
+  generateInclusionProof,
+  traceInclusionProof,
+  MerkleTreeFull,
+} from '../lib/merkle';
 
 type FileVerifyResult =
   | { status: 'ok'; readingsCount: number; computedRoot: string; anchorMatches: boolean }
   | { status: 'mismatch'; readingsCount: number; computedRoot: string; expectedRoot: string }
   | { status: 'error'; message: string };
+
+type SortedReading = {
+  id: string;
+  timestamp: string;
+  value: number;
+  unit: string;
+  variable: string;
+  // Canonical hash derived locally from the raw values — never trust a hash
+  // field from the file.
+  computedHash: string;
+};
+
+type ProofTrace = {
+  readingIndex: number;
+  reading: SortedReading;
+  canonicalString: string;
+  leafHash: string;
+  steps: Array<{
+    step: number;
+    left: string;
+    right: string;
+    result: string;
+    siblingFromSide: 'left' | 'right';
+  }>;
+  finalRoot: string;
+  matchesOnchain: boolean;
+};
 
 interface AuditPageProps {
   dataset?: Dataset;
@@ -40,6 +73,16 @@ export function AuditPage({ dataset: propDataset, sensor: propSensor, onBack }: 
   const [verifyFileName, setVerifyFileName] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { accessToken } = useAuth();
+
+  // Persisted after a successful file verification — lets the user prove
+  // individual readings client-side (no further server calls).
+  const [verifiedReadings, setVerifiedReadings] = useState<SortedReading[] | null>(null);
+  const [verifiedTree, setVerifiedTree] = useState<MerkleTreeFull | null>(null);
+  const [proofPage, setProofPage] = useState(1);
+  const [proofSearch, setProofSearch] = useState('');
+  const [activeProof, setActiveProof] = useState<ProofTrace | null>(null);
+  const [computingProof, setComputingProof] = useState<number | null>(null);
+  const PROOF_PAGE_SIZE = 20;
 
   // Check if we're viewing a public sensor
   const publicSensorId = searchParams.get('sensor');
@@ -179,7 +222,7 @@ export function AuditPage({ dataset: propDataset, sensor: propSensor, onBack }: 
       // don't trust any `hash` field in the file. This is the whole point of
       // verification: hashing the data the user can actually see.
       const sensorId = parsed?.dataset?.sensorId ?? dataset.sensorId;
-      const hashes = await Promise.all(sorted.map(async (r: any) => {
+      const enriched: SortedReading[] = await Promise.all(sorted.map(async (r: any) => {
         const canonical = JSON.stringify({
           sensorId,
           timestamp: r.timestamp,
@@ -190,11 +233,21 @@ export function AuditPage({ dataset: propDataset, sensor: propSensor, onBack }: 
           'SHA-256',
           new TextEncoder().encode(canonical),
         );
-        return Array.from(new Uint8Array(buf))
+        const computedHash = Array.from(new Uint8Array(buf))
           .map((b) => b.toString(16).padStart(2, '0'))
           .join('');
+        return {
+          id: r.id,
+          timestamp: r.timestamp,
+          value: r.value,
+          unit: r.unit,
+          variable: r.variable,
+          computedHash,
+        };
       }));
-      const computed = await computeMerkleRoot(hashes);
+      const hashes = enriched.map((r) => r.computedHash);
+      const tree = await buildMerkleTreeFull(hashes);
+      const computed = tree.root;
       const matches = computed === dataset.merkleRoot;
       if (matches) {
         const anchorMatches =
@@ -205,6 +258,11 @@ export function AuditPage({ dataset: propDataset, sensor: propSensor, onBack }: 
           computedRoot: computed,
           anchorMatches,
         });
+        // Persist the verified readings + tree so individual-reading proofs
+        // can be generated client-side with no more server calls.
+        setVerifiedReadings(enriched);
+        setVerifiedTree(tree);
+        setProofPage(1);
       } else {
         setVerifyResult({
           status: 'mismatch',
@@ -212,6 +270,8 @@ export function AuditPage({ dataset: propDataset, sensor: propSensor, onBack }: 
           computedRoot: computed,
           expectedRoot: dataset.merkleRoot,
         });
+        setVerifiedReadings(null);
+        setVerifiedTree(null);
       }
     } catch (err: any) {
       console.error('File verification failed:', err);
@@ -224,8 +284,64 @@ export function AuditPage({ dataset: propDataset, sensor: propSensor, onBack }: 
   const resetFileVerify = () => {
     setVerifyResult(null);
     setVerifyFileName(null);
+    setVerifiedReadings(null);
+    setVerifiedTree(null);
+    setActiveProof(null);
+    setProofPage(1);
+    setProofSearch('');
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
+
+  // Walk a single reading from raw values → leaf hash → up through the
+  // inclusion proof → final root → compare to the on-chain anchor. All
+  // client-side, deterministic, no server involvement.
+  const handleProveReading = async (index: number) => {
+    if (!verifiedTree || !verifiedReadings || !dataset?.merkleRoot) return;
+    setComputingProof(index);
+    try {
+      const reading = verifiedReadings[index];
+      const sensorId = dataset.sensorId;
+      const canonical = JSON.stringify({
+        sensorId,
+        timestamp: reading.timestamp,
+        value: reading.value,
+        unit: reading.unit,
+      });
+      const { leafHash, proof } = generateInclusionProof(verifiedTree, index);
+      const steps = await traceInclusionProof(leafHash, proof);
+      const finalRoot = steps.length > 0 ? steps[steps.length - 1].result : leafHash;
+      setActiveProof({
+        readingIndex: index,
+        reading,
+        canonicalString: canonical,
+        leafHash,
+        steps,
+        finalRoot,
+        matchesOnchain: finalRoot === dataset.merkleRoot,
+      });
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to generate proof');
+    } finally {
+      setComputingProof(null);
+    }
+  };
+
+  // Filter + paginate the readings table for the "prove one" UI.
+  const filteredReadings = (verifiedReadings ?? []).map((r, i) => ({ r, i })).filter(({ r }) => {
+    if (!proofSearch.trim()) return true;
+    const q = proofSearch.trim().toLowerCase();
+    return (
+      r.timestamp.toLowerCase().includes(q) ||
+      r.computedHash.toLowerCase().includes(q) ||
+      String(r.value).toLowerCase().includes(q)
+    );
+  });
+  const totalProofPages = Math.max(1, Math.ceil(filteredReadings.length / PROOF_PAGE_SIZE));
+  const pageClamped = Math.min(proofPage, totalProofPages);
+  const pageRows = filteredReadings.slice(
+    (pageClamped - 1) * PROOF_PAGE_SIZE,
+    pageClamped * PROOF_PAGE_SIZE,
+  );
 
   const handleAccessRequest = () => {
     if (!requestName || !requestEmail) {
@@ -559,6 +675,221 @@ export function AuditPage({ dataset: propDataset, sensor: propSensor, onBack }: 
             </div>
           )}
         </Card>
+
+        {/* Individual reading proof */}
+        {verifyResult?.status === 'ok' && verifiedReadings && verifiedTree && (
+          <Card className="p-8 bg-card border-border mb-6">
+            <h2 className="mb-2" style={{ fontSize: '1.25rem', fontWeight: 600, color: 'var(--text-primary)' }}>
+              Trace any individual reading to the on-chain root
+            </h2>
+            <p className="text-sm mb-6" style={{ color: 'var(--text-secondary)' }}>
+              The check above proved the <em>whole</em> file matches the anchor. The same math can be shown for any single reading — pick one below and watch its hash walk up the Merkle tree until it lands on the exact root that's in the Solana memo.
+            </p>
+
+            <div className="relative mb-4">
+              <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                value={proofSearch}
+                onChange={(e) => { setProofSearch(e.target.value); setProofPage(1); }}
+                placeholder="Filter by timestamp, value or hash prefix..."
+                className="pl-10 bg-input border-border"
+              />
+            </div>
+
+            <div className="rounded-lg border border-border overflow-hidden mb-4">
+              <div className="grid grid-cols-12 gap-2 px-4 py-2 bg-muted/40 text-xs uppercase tracking-wide" style={{ color: 'var(--text-muted)' }}>
+                <div className="col-span-1">#</div>
+                <div className="col-span-4">Timestamp</div>
+                <div className="col-span-2">Value</div>
+                <div className="col-span-4">Computed hash</div>
+                <div className="col-span-1 text-right">Prove</div>
+              </div>
+              {pageRows.length === 0 && (
+                <div className="px-4 py-6 text-center text-sm" style={{ color: 'var(--text-muted)' }}>
+                  No readings match that filter.
+                </div>
+              )}
+              {pageRows.map(({ r, i }) => (
+                <div
+                  key={r.id}
+                  className={`grid grid-cols-12 gap-2 px-4 py-2 items-center text-sm border-t border-border hover:bg-muted/20 ${activeProof?.readingIndex === i ? 'bg-primary/5' : ''}`}
+                >
+                  <div className="col-span-1 font-mono text-xs" style={{ color: 'var(--text-muted)' }}>
+                    {i + 1}
+                  </div>
+                  <div className="col-span-4 font-mono text-xs" style={{ color: 'var(--text-primary)' }}>
+                    {new Date(r.timestamp).toLocaleString()}
+                  </div>
+                  <div className="col-span-2" style={{ color: 'var(--text-primary)' }}>
+                    {r.value} {r.unit}
+                  </div>
+                  <div className="col-span-4 font-mono text-xs truncate" style={{ color: 'var(--text-secondary)' }} title={r.computedHash}>
+                    {r.computedHash.slice(0, 16)}…
+                  </div>
+                  <div className="col-span-1 flex justify-end">
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => handleProveReading(i)}
+                      disabled={computingProof !== null}
+                      className="h-7 px-2"
+                    >
+                      {computingProof === i ? (
+                        <Loader2 className="w-3 h-3 animate-spin" />
+                      ) : (
+                        <Shield className="w-3 h-3" />
+                      )}
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div className="flex items-center justify-between text-sm">
+              <span style={{ color: 'var(--text-muted)' }}>
+                {filteredReadings.length.toLocaleString()} reading{filteredReadings.length === 1 ? '' : 's'} — page {pageClamped} of {totalProofPages}
+              </span>
+              <div className="flex gap-1">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setProofPage((p) => Math.max(1, p - 1))}
+                  disabled={pageClamped <= 1}
+                  className="border-border"
+                >
+                  <ChevronLeft className="w-4 h-4" />
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setProofPage((p) => Math.min(totalProofPages, p + 1))}
+                  disabled={pageClamped >= totalProofPages}
+                  className="border-border"
+                >
+                  <ChevronRight className="w-4 h-4" />
+                </Button>
+              </div>
+            </div>
+
+            {activeProof && (
+              <div className="mt-6 p-5 rounded-lg bg-muted/30 border border-border">
+                <div className="flex items-start justify-between gap-3 mb-4">
+                  <div>
+                    <h3 style={{ fontWeight: 600, color: 'var(--text-primary)' }}>
+                      Proof for reading #{activeProof.readingIndex + 1}
+                    </h3>
+                    <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>
+                      {new Date(activeProof.reading.timestamp).toLocaleString()} · {activeProof.reading.value} {activeProof.reading.unit}
+                    </p>
+                  </div>
+                  <Button size="sm" variant="ghost" onClick={() => setActiveProof(null)}>
+                    Close
+                  </Button>
+                </div>
+
+                <div className="space-y-4">
+                  {/* Step 1 — raw */}
+                  <div>
+                    <p className="text-xs uppercase tracking-wide mb-1" style={{ color: 'var(--text-muted)' }}>
+                      Step 1 — Raw reading data
+                    </p>
+                    <pre className="text-xs font-mono p-3 rounded bg-background/60 border border-border overflow-x-auto" style={{ color: 'var(--text-primary)' }}>
+{`sensorId:   ${dataset?.sensorId}
+timestamp:  ${activeProof.reading.timestamp}
+value:      ${activeProof.reading.value}
+unit:       ${activeProof.reading.unit}`}
+                    </pre>
+                  </div>
+
+                  {/* Step 2 — canonical hash */}
+                  <div>
+                    <p className="text-xs uppercase tracking-wide mb-1" style={{ color: 'var(--text-muted)' }}>
+                      Step 2 — Canonical JSON → SHA-256 (the reading hash)
+                    </p>
+                    <pre className="text-xs font-mono p-3 rounded bg-background/60 border border-border break-all whitespace-pre-wrap" style={{ color: 'var(--text-secondary)' }}>
+{activeProof.canonicalString}
+                    </pre>
+                    <div className="mt-2 p-2 rounded bg-background/60 border border-border flex items-center justify-between gap-2">
+                      <span className="text-xs" style={{ color: 'var(--text-muted)' }}>reading hash →</span>
+                      <code className="text-xs font-mono break-all" style={{ color: 'var(--text-primary)' }}>
+                        {activeProof.reading.computedHash}
+                      </code>
+                    </div>
+                    <p className="text-xs mt-2" style={{ color: 'var(--text-muted)' }}>
+                      Leaf (domain-separated): <code className="font-mono">sha256(readingHashHex)</code> = <code className="font-mono">{activeProof.leafHash.slice(0, 32)}…</code>
+                    </p>
+                  </div>
+
+                  {/* Step 3 — walk the tree */}
+                  <div>
+                    <p className="text-xs uppercase tracking-wide mb-1" style={{ color: 'var(--text-muted)' }}>
+                      Step 3 — Walk {activeProof.steps.length} layer{activeProof.steps.length === 1 ? '' : 's'} up to the root
+                    </p>
+                    <div className="space-y-2">
+                      {activeProof.steps.map((s) => (
+                        <div key={s.step} className="p-3 rounded bg-background/60 border border-border text-xs font-mono" style={{ color: 'var(--text-secondary)' }}>
+                          <div style={{ color: 'var(--text-muted)' }}>layer {s.step} — sibling comes from the {s.siblingFromSide}</div>
+                          <div className="mt-1 truncate" title={s.left}>
+                            L: {s.left}
+                          </div>
+                          <div className="truncate" title={s.right}>
+                            R: {s.right}
+                          </div>
+                          <div className="mt-1" style={{ color: 'var(--text-primary)' }}>
+                            → sha256(L‖R) = {s.result}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Step 4 — match on-chain */}
+                  <div className={`p-4 rounded-lg border ${activeProof.matchesOnchain ? 'bg-success/10 border-success/30' : 'bg-destructive/10 border-destructive/30'}`}>
+                    <div className="flex items-start gap-3">
+                      {activeProof.matchesOnchain ? (
+                        <CheckCircle2 className="w-5 h-5 text-success mt-0.5" />
+                      ) : (
+                        <XCircle className="w-5 h-5 text-destructive mt-0.5" />
+                      )}
+                      <div className="flex-1 min-w-0">
+                        <p style={{ fontWeight: 600, color: activeProof.matchesOnchain ? 'var(--success)' : 'var(--destructive)' }}>
+                          {activeProof.matchesOnchain
+                            ? 'This reading is cryptographically committed to the on-chain anchor'
+                            : 'Final root does not match the on-chain anchor'}
+                        </p>
+                        <div className="mt-3 grid gap-2">
+                          <div>
+                            <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Computed (from walking the proof)</p>
+                            <code className="block p-2 rounded bg-background/60 font-mono text-xs break-all" style={{ color: 'var(--text-primary)' }}>
+                              {activeProof.finalRoot}
+                            </code>
+                          </div>
+                          <div>
+                            <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Anchored on Solana</p>
+                            <code className="block p-2 rounded bg-background/60 font-mono text-xs break-all" style={{ color: 'var(--text-primary)' }}>
+                              {dataset?.merkleRoot}
+                            </code>
+                          </div>
+                        </div>
+                        {dataset?.anchorExplorerUrl && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => window.open(dataset.anchorExplorerUrl, '_blank')}
+                            className="mt-3 border-border"
+                          >
+                            Cross-check on Solana Explorer
+                            <ExternalLink className="w-3 h-3 ml-2" />
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+          </Card>
+        )}
 
         {/* How to Verify */}
         <Card className="p-6 bg-muted/30 border-border">
