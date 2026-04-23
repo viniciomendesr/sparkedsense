@@ -887,8 +887,29 @@ app.get("/server/datasets/:sensorId", async (c) => {
 
     const sensorId = c.req.param('sensorId');
     const datasets = await kv.getByPrefix(`dataset:${sensorId}:`);
-    
-    return c.json({ datasets: datasets || [] });
+
+    // Backfill stale readingsCount: datasets created before the HEAD-count fix
+    // (commit 9d1fa95) have a capped value persisted (often exactly 1000).
+    // Recompute via HEAD count on read so UI always shows the true figure.
+    const sensor = await kv.get(`sensor:${user.id}:${sensorId}`);
+    const refreshed = await Promise.all((datasets || []).map(async (d: any) => {
+      try {
+        const count = await countSensorReadings(sensorId, sensor, {
+          since: new Date(d.startDate),
+          until: new Date(d.endDate),
+        });
+        if (count !== d.readingsCount) {
+          const updated = { ...d, readingsCount: count };
+          await kv.set(`dataset:${sensorId}:${d.id}`, updated);
+          return updated;
+        }
+        return d;
+      } catch {
+        return d;
+      }
+    }));
+
+    return c.json({ datasets: refreshed });
   } catch (error) {
     console.error('Failed to fetch datasets:', error);
     return c.json({ error: 'Failed to fetch datasets' }, 500);
@@ -917,18 +938,29 @@ app.get("/server/datasets/detail/:id", async (c) => {
     const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
     const datasetStart = new Date(dataset.startDate);
     const datasetEnd = new Date(dataset.endDate);
-    
+
     const previewReadings = readings.filter((r: any) => {
       const timestamp = new Date(r.timestamp);
       return timestamp >= oneHourAgo && timestamp >= datasetStart && timestamp <= datasetEnd;
     }).slice(0, 50); // Limit to 50 readings
+
+    // Backfill stale readingsCount for datasets created before the HEAD-count fix.
+    try {
+      const trueCount = await countSensorReadings(dataset.sensorId, dsensor, {
+        since: datasetStart,
+        until: datasetEnd,
+      });
+      dataset.readingsCount = trueCount;
+    } catch {
+      // Keep persisted value if recount fails.
+    }
 
     // Increment access count
     const currentAccessCount = dataset.accessCount || 0;
     dataset.accessCount = currentAccessCount + 1;
     await kv.set(`dataset:${dataset.sensorId}:${id}`, dataset);
 
-    return c.json({ 
+    return c.json({
       dataset: {
         ...dataset,
         previewReadings
@@ -1019,12 +1051,15 @@ app.post("/server/datasets/:id/anchor", async (c) => {
       return c.json({ error: 'Dataset not found' }, 404);
     }
 
-    // Get readings in dataset range and calculate actual Merkle root
+    // Get readings in dataset range and calculate actual Merkle root.
+    // Pass an explicit high limit — without it getSensorReadings defaults to
+    // PAGE_SIZE=1000, which would silently build a Merkle tree over only the
+    // first 1000 readings and break verifiability for datasets with more.
     const allSensorsForAnchor = await kv.getByPrefix('sensor:');
     const anchorSensor = allSensorsForAnchor.find((s: any) => s.id === dataset.sensorId);
     const start = new Date(dataset.startDate);
     const end = new Date(dataset.endDate);
-    const readingsInRange = await getSensorReadings(dataset.sensorId, anchorSensor, { since: start, until: end });
+    const readingsInRange = await getSensorReadings(dataset.sensorId, anchorSensor, { since: start, until: end, limit: Number.MAX_SAFE_INTEGER });
 
     const tree = await buildMerkleTreeFromReadings(readingsInRange);
     const merkleRoot = tree.root;
@@ -1464,7 +1499,20 @@ app.get("/server/public/datasets/:sensorId", async (c) => {
     const datasets = await kv.getByPrefix(`dataset:${sensorId}:`);
     const publicDatasets = datasets.filter((d: any) => d.isPublic === true);
 
-    return c.json({ datasets: publicDatasets });
+    // Backfill stale readingsCount (see datasets/:sensorId handler for context).
+    const refreshed = await Promise.all(publicDatasets.map(async (d: any) => {
+      try {
+        const count = await countSensorReadings(sensorId, sensor, {
+          since: new Date(d.startDate),
+          until: new Date(d.endDate),
+        });
+        return { ...d, readingsCount: count };
+      } catch {
+        return d;
+      }
+    }));
+
+    return c.json({ datasets: refreshed });
   } catch (error) {
     console.error('Failed to fetch public datasets:', error);
     return c.json({ error: 'Failed to fetch public datasets' }, 500);
