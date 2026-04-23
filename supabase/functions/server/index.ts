@@ -177,20 +177,31 @@ const getSensorReadings = async (
 };
 
 // Count readings efficiently via PG (avoids fetching all rows)
-const countSensorReadings = async (sensorId: string, sensor: any): Promise<number> => {
+const countSensorReadings = async (
+  sensorId: string,
+  sensor: any,
+  options?: { since?: Date; until?: Date },
+): Promise<number> => {
   if (sensor?.mode === 'mock') {
-    const readings = await kv.getByPrefix(`reading:${sensorId}:`);
+    let readings = await kv.getByPrefix(`reading:${sensorId}:`);
+    if (options?.since) readings = readings.filter((r: any) => new Date(r.timestamp) >= options.since!);
+    if (options?.until) readings = readings.filter((r: any) => new Date(r.timestamp) <= options.until!);
     return readings.length;
   }
   const nftAddress = await resolveNftAddress(sensorId, sensor);
   if (!nftAddress) {
-    const readings = await kv.getByPrefix(`reading:${sensorId}:`);
+    let readings = await kv.getByPrefix(`reading:${sensorId}:`);
+    if (options?.since) readings = readings.filter((r: any) => new Date(r.timestamp) >= options.since!);
+    if (options?.until) readings = readings.filter((r: any) => new Date(r.timestamp) <= options.until!);
     return readings.length;
   }
-  const { count, error } = await supabase
+  let q = supabase
     .from('sensor_readings')
     .select('id', { count: 'exact', head: true })
     .eq('nft_address', nftAddress);
+  if (options?.since) q = q.gte('timestamp', options.since.toISOString());
+  if (options?.until) q = q.lte('timestamp', options.until.toISOString());
+  const { count, error } = await q;
   if (error) return 0;
   return count ?? 0;
 };
@@ -912,11 +923,11 @@ app.post("/server/datasets", async (c) => {
     const { name, sensorId, startDate, endDate, isPublic } = await c.req.json();
     const id = generateId();
 
-    // Count readings in range
+    // Count readings in range via a HEAD count — no row fetch, no 1000-row cap.
     const sensor = await kv.get(`sensor:${user.id}:${sensorId}`);
     const start = new Date(startDate);
     const end = new Date(endDate);
-    const readingsInRange = await getSensorReadings(sensorId, sensor, { since: start, until: end });
+    const readingsCount = await countSensorReadings(sensorId, sensor, { since: start, until: end });
 
     const dataset = {
       id,
@@ -924,7 +935,7 @@ app.post("/server/datasets", async (c) => {
       sensorId,
       startDate,
       endDate,
-      readingsCount: readingsInRange.length,
+      readingsCount,
       status: 'preparing',
       isPublic: isPublic || false,
       createdAt: new Date().toISOString(),

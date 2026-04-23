@@ -108,60 +108,62 @@ export function SensorDetailPage({
     const loadData = async () => {
       if (!accessToken) return;
 
-      try {
-        setLoading(true);
-        const [readingsData, historicalData, datasetsData, merkleData] = await Promise.all([
-          readingAPI.list(sensor.id, accessToken, 100),
-          readingAPI.list(sensor.id, accessToken, 50000),
-          datasetAPI.list(sensor.id, accessToken),
-          merkleAPI.getHourlyRoot(sensor.id, accessToken).catch(() => ({ merkleRoot: '' })),
-        ]);
+      setLoading(true);
 
-        const parsedReadings = readingsData.map(r => ({
-          ...r,
-          timestamp: new Date(r.timestamp),
-        }));
-
-        const parsedHistorical = historicalData.map(r => ({
-          ...r,
-          timestamp: new Date(r.timestamp),
-        }));
-
-        const parsedDatasets = datasetsData.map(d => ({
+      // Independent fetches — one failing must not wipe the others.
+      // Historical (large limit) is capped at 10k to stay within the edge
+      // function's wall-clock budget; larger limits were triggering HTTP 546.
+      const parseReadings = (rows: Reading[]) =>
+        rows.map((r) => ({ ...r, timestamp: new Date(r.timestamp) }));
+      const parseDatasets = (rows: Dataset[]) =>
+        rows.map((d) => ({
           ...d,
           startDate: new Date(d.startDate),
           endDate: new Date(d.endDate),
           createdAt: new Date(d.createdAt),
         }));
 
-        // For real sensors, only show readings if they exist from API
-        // For mock sensors, fall back to generated data if no API data
-        if (sensor.mode === 'real') {
-          setReadings(parsedReadings);
-          setHistoricalReadings(parsedHistorical);
-        } else {
-          const fallback = generateHistoricalReadings(sensor.id, sensor.type, 60);
-          setReadings(parsedReadings.length > 0 ? parsedReadings : fallback);
-          setHistoricalReadings(parsedHistorical.length > 0 ? parsedHistorical : fallback);
-        }
-        setDatasets(parsedDatasets);
-        setHourlyMerkleRoot(merkleData.merkleRoot || '');
+      const [readingsRes, historicalRes, datasetsRes, merkleRes] = await Promise.allSettled([
+        readingAPI.list(sensor.id, accessToken, 100),
+        readingAPI.list(sensor.id, accessToken, 10000),
+        datasetAPI.list(sensor.id, accessToken),
+        merkleAPI.getHourlyRoot(sensor.id, accessToken),
+      ]);
 
-      } catch (error: any) {
-        console.error('Failed to load sensor data:', error);
-        // For real sensors, keep readings empty on error
-        // For mock sensors, fall back to mock data
-        if (sensor.mode === 'mock') {
-          const historical = generateHistoricalReadings(sensor.id, sensor.type, 60);
-          setReadings(historical);
-          setHistoricalReadings(historical);
-        } else {
-          setReadings([]);
-          setHistoricalReadings([]);
-        }
-      } finally {
-        setLoading(false);
+      const fallback = sensor.mode === 'mock'
+        ? generateHistoricalReadings(sensor.id, sensor.type, 60)
+        : [];
+
+      if (readingsRes.status === 'fulfilled') {
+        const parsed = parseReadings(readingsRes.value);
+        setReadings(parsed.length > 0 ? parsed : (sensor.mode === 'real' ? [] : fallback));
+      } else {
+        console.error('Failed to load readings:', readingsRes.reason);
+        setReadings(sensor.mode === 'real' ? [] : fallback);
       }
+
+      if (historicalRes.status === 'fulfilled') {
+        const parsed = parseReadings(historicalRes.value);
+        setHistoricalReadings(parsed.length > 0 ? parsed : (sensor.mode === 'real' ? [] : fallback));
+      } else {
+        console.error('Failed to load historical readings:', historicalRes.reason);
+        // Keep previous value if we had one; otherwise fallback.
+        setHistoricalReadings((prev) => prev.length > 0 ? prev : (sensor.mode === 'real' ? [] : fallback));
+      }
+
+      if (datasetsRes.status === 'fulfilled') {
+        setDatasets(parseDatasets(datasetsRes.value));
+      } else {
+        console.error('Failed to load datasets:', datasetsRes.reason);
+        // Preserve any optimistically-added datasets instead of wiping them.
+      }
+
+      if (merkleRes.status === 'fulfilled') {
+        setHourlyMerkleRoot(merkleRes.value.merkleRoot || '');
+      }
+
+      setLoading(false);
+      return;
     };
 
     loadData();
@@ -275,23 +277,40 @@ export function SensorDetailPage({
       setEndDate('');
       setIsPublicDataset(false);
 
-      toast.info('Dataset creation started', {
-        description: 'Preparing readings for blockchain anchoring...',
+      toast.success('Dataset created', {
+        description: 'Click "Anchor to Solana" on the dataset card to publish the Merkle root onchain.',
       });
-
-      // Trigger anchoring
-      setTimeout(async () => {
-        try {
-          await datasetAPI.anchor(dataset.id, accessToken);
-          toast.success('Dataset anchored on Solana!');
-        } catch (error) {
-          console.error('Failed to anchor dataset:', error);
-          toast.error('Failed to anchor dataset');
-        }
-      }, 2000);
     } catch (error: any) {
       console.error('Failed to create dataset:', error);
       toast.error('Failed to create dataset');
+    }
+  };
+
+  const handleAnchorDataset = async (dataset: Dataset) => {
+    if (!accessToken) return;
+    // Optimistic UI: flip status so the button disables while the tx is in flight.
+    setDatasets(prev => prev.map(d => d.id === dataset.id ? { ...d, status: 'anchoring' } : d));
+    toast.info('Anchoring on Solana...', { description: 'Signing and submitting tx, ~5–20 seconds.' });
+    try {
+      const updated = await datasetAPI.anchor(dataset.id, accessToken);
+      const parsed: Dataset = {
+        ...updated,
+        startDate: new Date(updated.startDate),
+        endDate: new Date(updated.endDate),
+        createdAt: new Date(updated.createdAt),
+      };
+      setDatasets(prev => prev.map(d => d.id === dataset.id ? parsed : d));
+      if (parsed.anchorExplorerUrl) {
+        toast.success('Anchored on Solana', { description: 'Click "View onchain anchor" to verify.' });
+      } else {
+        toast.warning('Dataset marked anchored (fallback)', {
+          description: 'Solana tx unavailable — simulated anchor used. Retry to get a real onchain signature.',
+        });
+      }
+    } catch (error: any) {
+      console.error('Anchor failed:', error);
+      setDatasets(prev => prev.map(d => d.id === dataset.id ? { ...d, status: 'failed' } : d));
+      toast.error('Anchor failed', { description: error.message || 'You can retry from the dataset card.' });
     }
   };
 
@@ -866,6 +885,25 @@ export function SensorDetailPage({
                       </div>
 
                       <div className="flex items-center gap-2 flex-wrap">
+                        {(dataset.status === 'preparing' || dataset.status === 'failed') && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleAnchorDataset(dataset)}
+                            className="border-primary/50 text-primary hover:bg-primary/10"
+                          >
+                            <Shield className="w-3 h-3 mr-2" />
+                            {dataset.status === 'failed' ? 'Retry anchor' : 'Anchor to Solana'}
+                          </Button>
+                        )}
+
+                        {dataset.status === 'anchoring' && (
+                          <Button variant="outline" size="sm" disabled className="border-border">
+                            <Loader2 className="w-3 h-3 mr-2 animate-spin" />
+                            Anchoring...
+                          </Button>
+                        )}
+
                         {dataset.status === 'anchored' && (
                           <Button
                             variant="outline"
