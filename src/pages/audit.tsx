@@ -299,20 +299,28 @@ export function AuditPage({ dataset: propDataset, sensor: propSensor, onBack }: 
             </div>
           </div>
 
-          {/* View Proof Button */}
-          <div className="mb-6">
-            <Button
-              variant="outline"
-              className="w-full border-border hover:bg-muted"
-              onClick={() => window.open('https://explorer.solana.com/', '_blank')}
-            >
-              View Proof of Last Hour Data on Solana Explorer
-              <ExternalLink className="w-4 h-4 ml-2" />
-            </Button>
-            <p className="text-xs mt-2" style={{ color: 'var(--text-muted)' }}>
-              Opens Solana Explorer to inspect the Merkle root of the dataset's last hour of readings anchored on the blockchain.
-            </p>
-          </div>
+          {/* View onchain anchor — only when the dataset was actually anchored */}
+          {dataset.anchorExplorerUrl ? (
+            <div className="mb-6">
+              <Button
+                variant="outline"
+                className="w-full border-primary/50 hover:bg-primary/10"
+                onClick={() => window.open(dataset.anchorExplorerUrl, '_blank')}
+              >
+                View onchain anchor on Solana Explorer
+                <ExternalLink className="w-4 h-4 ml-2" />
+              </Button>
+              <p className="text-xs mt-2" style={{ color: 'var(--text-muted)' }}>
+                The dataset's Merkle root is anchored in a memo transaction on Solana {dataset.anchorCluster ?? 'devnet'}. Click to verify the root on a block explorer independent of this platform.
+              </p>
+            </div>
+          ) : (
+            <div className="mb-6 p-3 rounded bg-muted/40 border border-border">
+              <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
+                This dataset has not been anchored onchain yet. Click <strong>Anchor</strong> in the sensor's Datasets tab to submit the Merkle root as a memo transaction on Solana.
+              </p>
+            </div>
+          )}
 
           {/* Verification Input Fields */}
           <div className="space-y-4 mb-6">

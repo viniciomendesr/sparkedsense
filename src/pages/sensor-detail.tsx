@@ -675,11 +675,14 @@ export function SensorDetailPage({
               Showing readings from the last 1 hour (default system range)
             </p>
             {hourlyMerkleRoot && (
-              <div className="flex items-center gap-2 mb-4 p-3 bg-muted/50 rounded-lg border border-border">
-                <Shield className="w-4 h-4 text-primary flex-shrink-0" />
+              <div className="flex items-start gap-2 mb-4 p-3 bg-muted/50 rounded-lg border border-border">
+                <Shield className="w-4 h-4 text-primary flex-shrink-0 mt-0.5" />
                 <div className="flex-1 min-w-0">
                   <p className="text-xs mb-1" style={{ color: 'var(--text-muted)' }}>
-                    Hourly Data Merkle Root
+                    Hourly Merkle Root
+                    <span className="ml-1.5" style={{ color: 'var(--text-muted)' }}>
+                      — computed now; anchor a dataset to commit this range onchain
+                    </span>
                   </p>
                   <code className="text-xs font-mono block truncate" style={{ color: 'var(--text-secondary)' }}>
                     {hourlyMerkleRoot}
@@ -690,17 +693,9 @@ export function SensorDetailPage({
                   variant="ghost"
                   className="h-8 px-2 flex-shrink-0"
                   onClick={() => copyToClipboard(hourlyMerkleRoot)}
+                  title="Copy root"
                 >
                   <Copy className="w-3 h-3" />
-                </Button>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="flex-shrink-0 border-primary/50 hover:bg-primary/10"
-                  onClick={() => window.open('https://explorer.solana.com/', '_blank')}
-                >
-                  <ExternalLink className="w-3 h-3 mr-1" />
-                  View Proof
                 </Button>
               </div>
             )}
