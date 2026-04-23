@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Dataset, Sensor } from '../lib/types';
 import { Card } from '../components/ui/card';
@@ -7,10 +7,16 @@ import { Badge } from '../components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '../components/ui/dialog';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
-import { Copy, Check, CheckCircle2, ExternalLink, Shield, ArrowLeft, Mail, Info } from 'lucide-react';
-import { publicAPI } from '../lib/api';
+import { Copy, Check, CheckCircle2, ExternalLink, Shield, ArrowLeft, Mail, Info, Download, Upload, XCircle, Loader2 } from 'lucide-react';
+import { publicAPI, datasetAPI } from '../lib/api';
+import { useAuth } from '../lib/auth-context';
 import { toast } from 'sonner@2.0.3';
-import { verifyMerkleRoot } from '../lib/merkle';
+import { computeMerkleRoot } from '../lib/merkle';
+
+type FileVerifyResult =
+  | { status: 'ok'; readingsCount: number; computedRoot: string; anchorMatches: boolean }
+  | { status: 'mismatch'; readingsCount: number; computedRoot: string; expectedRoot: string }
+  | { status: 'error'; message: string };
 
 interface AuditPageProps {
   dataset?: Dataset;
@@ -24,14 +30,16 @@ export function AuditPage({ dataset: propDataset, sensor: propSensor, onBack }: 
   const [sensor, setSensor] = useState<Sensor | null>(propSensor || null);
   const [loading, setLoading] = useState(false);
   const [copiedField, setCopiedField] = useState<string | null>(null);
-  const [verifying, setVerifying] = useState(false);
-  const [verified, setVerified] = useState(false);
   const [accessRequestOpen, setAccessRequestOpen] = useState(false);
   const [requestName, setRequestName] = useState('');
   const [requestEmail, setRequestEmail] = useState('');
   const [requestPrice, setRequestPrice] = useState('');
-  const [verifyMerkleInput, setVerifyMerkleInput] = useState('');
-  const [verifySingleHashInput, setVerifySingleHashInput] = useState('');
+  const [downloading, setDownloading] = useState(false);
+  const [verifyingFile, setVerifyingFile] = useState(false);
+  const [verifyResult, setVerifyResult] = useState<FileVerifyResult | null>(null);
+  const [verifyFileName, setVerifyFileName] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const { accessToken } = useAuth();
 
   // Check if we're viewing a public sensor
   const publicSensorId = searchParams.get('sensor');
@@ -113,34 +121,110 @@ export function AuditPage({ dataset: propDataset, sensor: propSensor, onBack }: 
     }
   };
 
-  const handleVerify = async () => {
-    if (!sensor) return;
-    setVerifying(true);
+  const handleDownload = async () => {
+    if (!dataset) return;
+    setDownloading(true);
     try {
-      const merkleData = await publicAPI.getPublicHourlyMerkle(sensor.id);
-      const readingsData = await publicAPI.getPublicReadings(sensor.id, 500);
-      const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
-      const lastHourReadings = readingsData
-        .filter((r: any) => new Date(r.timestamp) >= oneHourAgo)
-        .sort((a: any, b: any) => {
-          const dt = new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime();
-          if (dt !== 0) return dt;
-          return (a.id || '').localeCompare(b.id || '');
-        });
-      const hashes = lastHourReadings.map((r: any) => r.hash || '');
-      const ok = await verifyMerkleRoot(hashes, merkleData.merkleRoot);
-      setVerifying(false);
-      setVerified(ok);
-      if (ok) {
-        toast.success(`Merkle root verified for ${lastHourReadings.length} readings (client-side)`);
-      } else {
-        toast.error('Merkle root verification failed');
-      }
-    } catch (err) {
-      console.error('Verification failed:', err);
-      setVerifying(false);
-      toast.error('Verification failed');
+      // Authenticated owner uses the private export; anonymous visitor falls
+      // back to the public export (only works when dataset.isPublic === true).
+      const payload = accessToken
+        ? await datasetAPI.export(dataset.id, accessToken)
+        : await publicAPI.exportPublicDataset(dataset.id);
+
+      const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${dataset.name.replace(/[^\w\-]+/g, '_')}.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      toast.success(`Dataset exported (${payload.readings?.length ?? 0} readings)`);
+    } catch (err: any) {
+      console.error('Download failed:', err);
+      toast.error(err.message || 'Download failed');
+    } finally {
+      setDownloading(false);
     }
+  };
+
+  // Rebuild the Merkle root locally from an uploaded export and compare it
+  // against the root on this page. This is the independent check a data
+  // recipient actually wants: "does this file match what was anchored?"
+  const handleFileVerify = async (file: File) => {
+    if (!dataset?.merkleRoot) {
+      toast.error('Dataset is not anchored yet — nothing to verify against');
+      return;
+    }
+    setVerifyingFile(true);
+    setVerifyResult(null);
+    setVerifyFileName(file.name);
+    try {
+      const text = await file.text();
+      const parsed = JSON.parse(text);
+      const readings: any[] = Array.isArray(parsed?.readings) ? parsed.readings : [];
+      if (readings.length === 0) {
+        setVerifyResult({ status: 'error', message: 'File has no readings to verify' });
+        return;
+      }
+      // Re-sort by (timestamp, id) so tampered ordering still produces the
+      // canonical root the backend anchored.
+      const sorted = [...readings].sort((a, b) => {
+        const dt = new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime();
+        if (dt !== 0) return dt;
+        return (a.id || '').localeCompare(b.id || '');
+      });
+      // Recompute the canonical per-reading hash from the raw values so we
+      // don't trust any `hash` field in the file. This is the whole point of
+      // verification: hashing the data the user can actually see.
+      const sensorId = parsed?.dataset?.sensorId ?? dataset.sensorId;
+      const hashes = await Promise.all(sorted.map(async (r: any) => {
+        const canonical = JSON.stringify({
+          sensorId,
+          timestamp: r.timestamp,
+          value: r.value,
+          unit: r.unit,
+        });
+        const buf = await globalThis.crypto.subtle.digest(
+          'SHA-256',
+          new TextEncoder().encode(canonical),
+        );
+        return Array.from(new Uint8Array(buf))
+          .map((b) => b.toString(16).padStart(2, '0'))
+          .join('');
+      }));
+      const computed = await computeMerkleRoot(hashes);
+      const matches = computed === dataset.merkleRoot;
+      if (matches) {
+        const anchorMatches =
+          !parsed?.anchor?.merkleRoot || parsed.anchor.merkleRoot === dataset.merkleRoot;
+        setVerifyResult({
+          status: 'ok',
+          readingsCount: readings.length,
+          computedRoot: computed,
+          anchorMatches,
+        });
+      } else {
+        setVerifyResult({
+          status: 'mismatch',
+          readingsCount: readings.length,
+          computedRoot: computed,
+          expectedRoot: dataset.merkleRoot,
+        });
+      }
+    } catch (err: any) {
+      console.error('File verification failed:', err);
+      setVerifyResult({ status: 'error', message: err.message || 'Could not parse file' });
+    } finally {
+      setVerifyingFile(false);
+    }
+  };
+
+  const resetFileVerify = () => {
+    setVerifyResult(null);
+    setVerifyFileName(null);
+    if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
   const handleAccessRequest = () => {
@@ -251,10 +335,10 @@ export function AuditPage({ dataset: propDataset, sensor: propSensor, onBack }: 
               <Info className="w-5 h-5 text-primary flex-shrink-0 mt-0.5" />
               <div>
                 <p style={{ fontSize: '0.875rem', color: 'var(--text-primary)', marginBottom: '4px' }}>
-                  <strong>Public Dataset Preview</strong>
+                  <strong>Public Dataset</strong>
                 </p>
                 <p style={{ fontSize: '0.875rem', color: 'var(--text-secondary)', marginBottom: '8px' }}>
-                  You are viewing a preview of the most recent hour of data. Verification below applies only to this preview dataset.
+                  You can download the full JSON export and recompute its Merkle root locally. If you need direct access to the owner (for commercial use, licensing, or questions), request it below.
                 </p>
                 <Button
                   size="sm"
@@ -322,184 +406,172 @@ export function AuditPage({ dataset: propDataset, sensor: propSensor, onBack }: 
             </div>
           )}
 
-          {/* Verification Input Fields */}
-          <div className="space-y-4 mb-6">
-            <h3 className="mb-2" style={{ fontWeight: 600, color: 'var(--text-primary)' }}>
-              Verify Data Integrity
-            </h3>
-            
-            {/* Hourly Data (Merkle Root) Verification */}
-            <div className="space-y-2">
-              <Label htmlFor="verify-merkle-root">
-                Hourly Data (Merkle Root) Verification
-              </Label>
-              <div className="flex gap-2">
-                <Input
-                  id="verify-merkle-root"
-                  value={verifyMerkleInput}
-                  onChange={(e) => setVerifyMerkleInput(e.target.value)}
-                  placeholder="Paste Merkle root to verify..."
-                  className="flex-1 bg-input border-border font-mono text-sm"
-                />
-                <Button
-                  onClick={async () => {
-                    if (!verifyMerkleInput.trim()) {
-                      toast.error('Please enter a Merkle root to verify');
-                      return;
-                    }
-                    if (!sensor) return;
-                    toast.info('Verifying Merkle root...');
-                    try {
-                      const result = await publicAPI.verifyPublicMerkle(sensor.id, verifyMerkleInput);
-                      if (result.verified) {
-                        toast.success('Merkle root verified! Data is authentic.');
-                      } else {
-                        toast.error('Merkle root does not match');
-                      }
-                    } catch (err) {
-                      toast.error('Verification failed');
-                    }
-                  }}
-                  variant="outline"
-                  className="border-primary/50 hover:bg-primary/10"
-                >
-                  <Shield className="w-4 h-4 mr-2" />
-                  Verify
-                </Button>
-              </div>
-            </div>
-
-            {/* Single Hash Verification */}
-            <div className="space-y-2">
-              <Label htmlFor="verify-single-hash">
-                Single Hash Verification
-              </Label>
-              <div className="flex gap-2">
-                <Input
-                  id="verify-single-hash"
-                  value={verifySingleHashInput}
-                  onChange={(e) => setVerifySingleHashInput(e.target.value)}
-                  placeholder="Paste single reading hash to verify..."
-                  className="flex-1 bg-input border-border font-mono text-sm"
-                />
-                <Button
-                  onClick={async () => {
-                    if (!verifySingleHashInput.trim()) {
-                      toast.error('Please enter a hash to verify');
-                      return;
-                    }
-                    if (!sensor) return;
-                    toast.info('Verifying hash against hourly Merkle tree...');
-                    try {
-                      const readingsData = await publicAPI.getPublicReadings(sensor.id, 500);
-                      const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
-                      const lastHour = readingsData.filter((r: any) => new Date(r.timestamp) >= oneHourAgo);
-                      const found = lastHour.find((r: any) => r.hash === verifySingleHashInput);
-                      if (found) {
-                        toast.success('Hash found in the last hour readings. Data is authentic.');
-                      } else {
-                        toast.error('Hash not found in recent readings');
-                      }
-                    } catch (err) {
-                      toast.error('Verification failed');
-                    }
-                  }}
-                  variant="outline"
-                  className="border-primary/50 hover:bg-primary/10"
-                >
-                  <Shield className="w-4 h-4 mr-2" />
-                  Verify
-                </Button>
-              </div>
-            </div>
-          </div>
-
-          {/* Quick Verify Button */}
-          <div className="p-4 rounded-lg bg-primary/10 border border-primary/20">
+          {/* Download Dataset */}
+          <div className="p-4 rounded-lg bg-muted/40 border border-border mb-6">
             <div className="flex items-start gap-3 mb-4">
-              <Shield className="w-5 h-5 text-primary mt-0.5" />
+              <Download className="w-5 h-5 text-primary mt-0.5" />
               <div className="flex-1">
                 <h3 className="mb-1" style={{ fontWeight: 600, color: 'var(--text-primary)' }}>
-                  Quick Client-Side Verification
+                  Download Dataset
                 </h3>
                 <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
-                  {publicSensorId 
-                    ? 'Verify the integrity of the last hour preview data by recomputing the Merkle proof against the on-chain root'
-                    : 'Verify data integrity locally by recomputing the Merkle proof against the on-chain root'
-                  }
+                  Exports every reading in this dataset plus the Merkle root and Solana anchor reference as a self-contained JSON file. Share this file with a buyer so they can verify it matches the on-chain anchor.
                 </p>
               </div>
             </div>
             <Button
-              onClick={handleVerify}
-              disabled={verifying || verified}
+              onClick={handleDownload}
+              disabled={downloading || !dataset.merkleRoot}
               className="w-full bg-primary text-primary-foreground"
             >
-              {verifying ? (
+              {downloading ? (
                 <>
-                  <span className="animate-pulse">Verifying...</span>
-                </>
-              ) : verified ? (
-                <>
-                  <CheckCircle2 className="w-4 h-4 mr-2" />
-                  Verified Successfully
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Exporting...
                 </>
               ) : (
                 <>
-                  <Shield className="w-4 h-4 mr-2" />
-                  Quick Verify Proof
+                  <Download className="w-4 h-4 mr-2" />
+                  Download Dataset (JSON)
                 </>
               )}
             </Button>
+            {!dataset.merkleRoot && (
+              <p className="text-xs mt-2" style={{ color: 'var(--text-muted)' }}>
+                Download is available after the dataset is anchored.
+              </p>
+            )}
           </div>
         </Card>
 
-        {/* Verification Result */}
-        {verified && (
-          <Card className="p-6 bg-success/10 border-success/30">
-            <div className="flex items-start gap-3">
-              <CheckCircle2 className="w-6 h-6 text-success mt-0.5" />
-              <div>
-                <h3 className="mb-2" style={{ fontWeight: 600, color: 'var(--success)' }}>
-                  Verification Successful
-                </h3>
-                <p className="text-sm mb-4" style={{ color: 'var(--text-secondary)' }}>
-                  The dataset's Merkle root matches the on-chain anchor. All {dataset.readingsCount.toLocaleString()} readings are verified and tamper-proof.
-                </p>
-                <div className="grid grid-cols-2 gap-4 p-4 rounded-lg bg-background/50">
-                  <div>
-                    <p className="text-xs mb-1" style={{ color: 'var(--text-muted)' }}>
-                      Integrity Status
-                    </p>
-                    <p className="text-sm" style={{ fontWeight: 500, color: 'var(--success)' }}>
-                      Valid ✓
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-xs mb-1" style={{ color: 'var(--text-muted)' }}>
-                      Blockchain Confirmation
-                    </p>
-                    <p className="text-sm" style={{ fontWeight: 500, color: 'var(--success)' }}>
-                      Confirmed ✓
-                    </p>
-                  </div>
+        {/* Verify Downloaded File */}
+        <Card className="p-8 bg-card border-border mb-6">
+          <h2 className="mb-2" style={{ fontSize: '1.25rem', fontWeight: 600, color: 'var(--text-primary)' }}>
+            Verify a Downloaded File
+          </h2>
+          <p className="text-sm mb-6" style={{ color: 'var(--text-secondary)' }}>
+            Have a copy of this dataset's JSON export? Upload it below. The page will recompute the Merkle root locally from your readings and compare it to the root shown above — if anything in the file was tampered with, the roots will not match.
+          </p>
+
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="application/json,.json"
+            className="hidden"
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              if (file) handleFileVerify(file);
+            }}
+          />
+
+          {!verifyResult && !verifyingFile && (
+            <Button
+              variant="outline"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={!dataset.merkleRoot}
+              className="w-full border-primary/50 hover:bg-primary/10"
+            >
+              <Upload className="w-4 h-4 mr-2" />
+              Choose JSON File
+            </Button>
+          )}
+
+          {verifyingFile && (
+            <div className="flex items-center justify-center gap-2 p-6 rounded bg-muted/40 border border-border">
+              <Loader2 className="w-4 h-4 animate-spin text-primary" />
+              <span className="text-sm" style={{ color: 'var(--text-secondary)' }}>
+                Computing Merkle root from {verifyFileName}...
+              </span>
+            </div>
+          )}
+
+          {verifyResult?.status === 'ok' && (
+            <div className="p-4 rounded-lg bg-success/10 border border-success/30">
+              <div className="flex items-start gap-3">
+                <CheckCircle2 className="w-5 h-5 text-success mt-0.5" />
+                <div className="flex-1 min-w-0">
+                  <p style={{ fontWeight: 600, color: 'var(--success)' }}>
+                    File matches the on-chain anchor
+                  </p>
+                  <p className="text-sm mt-1" style={{ color: 'var(--text-secondary)' }}>
+                    Recomputed Merkle root from {verifyResult.readingsCount.toLocaleString()} readings in <code className="font-mono text-xs">{verifyFileName}</code> is identical to the root anchored on Solana.
+                  </p>
+                  <code className="block mt-3 p-2 rounded bg-background/60 font-mono text-xs break-all" style={{ color: 'var(--text-primary)' }}>
+                    {verifyResult.computedRoot}
+                  </code>
+                  <Button variant="ghost" size="sm" onClick={resetFileVerify} className="mt-3">
+                    Verify another file
+                  </Button>
                 </div>
               </div>
             </div>
-          </Card>
-        )}
+          )}
+
+          {verifyResult?.status === 'mismatch' && (
+            <div className="p-4 rounded-lg bg-destructive/10 border border-destructive/30">
+              <div className="flex items-start gap-3">
+                <XCircle className="w-5 h-5 text-destructive mt-0.5" />
+                <div className="flex-1 min-w-0">
+                  <p style={{ fontWeight: 600, color: 'var(--destructive)' }}>
+                    File does not match the on-chain anchor
+                  </p>
+                  <p className="text-sm mt-1" style={{ color: 'var(--text-secondary)' }}>
+                    The root computed from {verifyResult.readingsCount.toLocaleString()} readings in <code className="font-mono text-xs">{verifyFileName}</code> differs from the anchored root. Either the file was altered, the readings are from a different dataset, or the export is corrupted.
+                  </p>
+                  <div className="mt-3 space-y-2">
+                    <div>
+                      <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Computed</p>
+                      <code className="block p-2 rounded bg-background/60 font-mono text-xs break-all" style={{ color: 'var(--text-primary)' }}>
+                        {verifyResult.computedRoot}
+                      </code>
+                    </div>
+                    <div>
+                      <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Expected (anchored)</p>
+                      <code className="block p-2 rounded bg-background/60 font-mono text-xs break-all" style={{ color: 'var(--text-primary)' }}>
+                        {verifyResult.expectedRoot}
+                      </code>
+                    </div>
+                  </div>
+                  <Button variant="ghost" size="sm" onClick={resetFileVerify} className="mt-3">
+                    Try a different file
+                  </Button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {verifyResult?.status === 'error' && (
+            <div className="p-4 rounded-lg bg-destructive/10 border border-destructive/30">
+              <div className="flex items-start gap-3">
+                <XCircle className="w-5 h-5 text-destructive mt-0.5" />
+                <div className="flex-1">
+                  <p style={{ fontWeight: 600, color: 'var(--destructive)' }}>
+                    Could not read file
+                  </p>
+                  <p className="text-sm mt-1" style={{ color: 'var(--text-secondary)' }}>
+                    {verifyResult.message}
+                  </p>
+                  <Button variant="ghost" size="sm" onClick={resetFileVerify} className="mt-3">
+                    Try again
+                  </Button>
+                </div>
+              </div>
+            </div>
+          )}
+        </Card>
 
         {/* How to Verify */}
-        <Card className="p-6 bg-muted/30 border-border mt-6">
+        <Card className="p-6 bg-muted/30 border-border">
           <h3 className="mb-3" style={{ fontWeight: 600, color: 'var(--text-primary)' }}>
-            How to Verify Independently
+            How to verify without trusting this page
           </h3>
           <ol className="text-sm space-y-2" style={{ color: 'var(--text-secondary)' }}>
-            <li>1. Fetch the sensor's hourly readings via the public API</li>
-            <li>2. Sort readings by timestamp (ascending), then by ID as tiebreaker</li>
-            <li>3. Build a binary Merkle tree: leaf = SHA-256(reading.hash), pairs hashed left+right</li>
-            <li>4. Compare the computed root with the Merkle root displayed above</li>
-            <li>5. For individual readings, request an inclusion proof from the API and verify the sibling path</li>
+            <li>1. Download the dataset JSON above (or use one shared with you).</li>
+            <li>2. Open the Solana Explorer link — read the memo transaction. It contains the anchored Merkle root.</li>
+            <li>3. For each reading, compute <code className="font-mono text-xs">hash = sha256(JSON.stringify(&#123;sensorId, timestamp, value, unit&#125;))</code> — this is the canonical hash, you derive it from the raw values you can see in the file.</li>
+            <li>4. Sort readings ascending by timestamp, then by id as tiebreaker.</li>
+            <li>5. Build a binary Merkle tree: leaf = sha256(readingHashHex), pair siblings and hash left+right, duplicate last node on odd layers.</li>
+            <li>6. The resulting root must equal the memo value on-chain. If it does, the file is provably the exact data that was anchored — and nothing you downloaded was tampered with.</li>
           </ol>
         </Card>
       </div>

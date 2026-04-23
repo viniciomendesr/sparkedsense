@@ -50,19 +50,12 @@ export async function verifyMerkleProof(
 }
 
 /**
- * Reconstruct a Merkle root from an array of reading hashes and compare
- * it against the expected root.
+ * Reconstruct a Merkle root from an array of reading hashes.
  *
  * @param readingHashes  Pre-sorted array of hex-encoded SHA-256 hashes
- * @param expectedRoot   The Merkle root to verify against
  */
-export async function verifyMerkleRoot(
-  readingHashes: string[],
-  expectedRoot: string,
-): Promise<boolean> {
-  if (readingHashes.length === 0) {
-    return expectedRoot === EMPTY_ROOT;
-  }
+export async function computeMerkleRoot(readingHashes: string[]): Promise<string> {
+  if (readingHashes.length === 0) return EMPTY_ROOT;
 
   // Domain-separated leaves
   let current = await Promise.all(readingHashes.map((h) => sha256Hex(h)));
@@ -77,5 +70,17 @@ export async function verifyMerkleRoot(
     current = next;
   }
 
-  return current[0] === expectedRoot;
+  return current[0];
+}
+
+/**
+ * Reconstruct a Merkle root from an array of reading hashes and compare
+ * it against the expected root.
+ */
+export async function verifyMerkleRoot(
+  readingHashes: string[],
+  expectedRoot: string,
+): Promise<boolean> {
+  const root = await computeMerkleRoot(readingHashes);
+  return root === expectedRoot;
 }

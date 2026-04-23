@@ -39,7 +39,8 @@ import {
   Eye,
   MapPin,
   Pencil,
-  RefreshCw
+  RefreshCw,
+  Download
 } from 'lucide-react';
 import { SensorChart } from '../components/sensor-chart';
 import { useAuth } from '../lib/auth-context';
@@ -333,6 +334,26 @@ export function SensorDetailPage({
       console.error('Anchor failed:', error);
       setDatasets(prev => prev.map(d => d.id === dataset.id ? { ...d, status: 'failed' } : d));
       toast.error('Anchor failed', { description: error.message || 'You can retry from the dataset card.' });
+    }
+  };
+
+  const handleDownloadDataset = async (dataset: Dataset) => {
+    if (!accessToken) return;
+    try {
+      const payload = await datasetAPI.export(dataset.id, accessToken);
+      const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${dataset.name.replace(/[^\w\-]+/g, '_')}.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      toast.success(`Exported ${payload.readings?.length ?? 0} readings`);
+    } catch (err: any) {
+      console.error('Download failed:', err);
+      toast.error(err.message || 'Download failed');
     }
   };
 
@@ -927,15 +948,26 @@ export function SensorDetailPage({
                         )}
 
                         {dataset.status === 'anchored' && (
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => onViewAudit(dataset, sensor)}
-                            className="border-border hover:bg-muted"
-                          >
-                            {dataset.isPublic ? 'View Public Audit' : 'View Audit'}
-                            <ExternalLink className="w-3 h-3 ml-2" />
-                          </Button>
+                          <>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => onViewAudit(dataset, sensor)}
+                              className="border-border hover:bg-muted"
+                            >
+                              {dataset.isPublic ? 'View Public Audit' : 'View Audit'}
+                              <ExternalLink className="w-3 h-3 ml-2" />
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => handleDownloadDataset(dataset)}
+                              className="border-border hover:bg-muted"
+                            >
+                              <Download className="w-3 h-3 mr-2" />
+                              Download
+                            </Button>
+                          </>
                         )}
 
                         {dataset.anchorExplorerUrl && (

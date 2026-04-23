@@ -1141,6 +1141,167 @@ app.post("/server/datasets/:id/access", async (c) => {
   }
 });
 
+// Export dataset as a self-contained JSON bundle for independent verification.
+//
+// We ship **raw** readings (no server-side hashing) and let the downloader
+// recompute the canonical hash per reading client-side. This matters because:
+//   1. The Supabase free-tier edge runtime hits WORKER_RESOURCE_LIMIT trying
+//      to hash 30k+ readings in a single invocation.
+//   2. It's cryptographically stronger — the buyer observes the raw data and
+//      derives the hash themselves, instead of trusting a server-computed
+//      field. They can literally read each value.
+//
+// The spec below documents the exact hash formula so that recomputation is
+// deterministic regardless of who runs it.
+const buildDatasetExport = async (dataset: any) => {
+  const allSensors = await kv.getByPrefix('sensor:');
+  const sensor = allSensors.find((s: any) => s.id === dataset.sensorId);
+  const sensorType = sensor?.type || 'temperature';
+  const typeConfig = sensorTypeConfigs[sensorType] || sensorTypeConfigs.temperature;
+
+  // Mock sensors keep readings in KV; PG for everything else.
+  let rawReadings: any[] = [];
+  if (sensor?.mode === 'mock') {
+    const kvReadings = await kv.getByPrefix(`reading:${dataset.sensorId}:`);
+    const start = new Date(dataset.startDate).getTime();
+    const end = new Date(dataset.endDate).getTime();
+    rawReadings = kvReadings
+      .filter((r: any) => {
+        const t = new Date(r.timestamp).getTime();
+        return t >= start && t <= end;
+      })
+      .map((r: any) => ({
+        id: r.id,
+        timestamp: r.timestamp,
+        value: r.value,
+        unit: r.unit,
+        variable: r.variable,
+      }));
+  } else {
+    const nftAddress = await resolveNftAddress(dataset.sensorId, sensor);
+    if (nftAddress) {
+      // Page PG in parallel, ASC order (no client-side re-sort needed).
+      const start = new Date(dataset.startDate).toISOString();
+      const end = new Date(dataset.endDate).toISOString();
+      const { count } = await supabase
+        .from('sensor_readings')
+        .select('id', { count: 'exact', head: true })
+        .eq('nft_address', nftAddress)
+        .gte('timestamp', start)
+        .lte('timestamp', end);
+      const total = count ?? 0;
+      const PAGE = 1000;
+      const numPages = Math.ceil(total / PAGE);
+      const pagePromises = Array.from({ length: numPages }, (_, i) => {
+        const offset = i * PAGE;
+        const endInclusive = Math.min(offset + PAGE, total) - 1;
+        return supabase
+          .from('sensor_readings')
+          .select('id, timestamp, data')
+          .eq('nft_address', nftAddress)
+          .gte('timestamp', start)
+          .lte('timestamp', end)
+          .order('timestamp', { ascending: true })
+          .order('id', { ascending: true })
+          .range(offset, endInclusive);
+      });
+      const pages = await Promise.all(pagePromises);
+      for (const { data, error } of pages) {
+        if (error) {
+          console.error('export page error:', error.message);
+          continue;
+        }
+        if (!data) continue;
+        for (const row of data) {
+          const value = row.data?.[typeConfig.dataKey] ?? row.data?.temperature ?? 0;
+          rawReadings.push({
+            id: row.id,
+            timestamp: row.timestamp,
+            value,
+            unit: typeConfig.unit,
+            variable: typeConfig.variable,
+          });
+        }
+      }
+    }
+  }
+
+  return {
+    spec: 'sparked-sense.dataset.v1',
+    dataset: {
+      id: dataset.id,
+      name: dataset.name,
+      sensorId: dataset.sensorId,
+      sensorName: sensor?.name ?? null,
+      sensorType,
+      startDate: dataset.startDate,
+      endDate: dataset.endDate,
+      createdAt: dataset.createdAt,
+      readingsCount: rawReadings.length,
+    },
+    anchor: {
+      merkleRoot: dataset.merkleRoot ?? null,
+      chain: 'solana',
+      cluster: dataset.anchorCluster ?? null,
+      transactionId: dataset.anchorTxSignature ?? dataset.transactionId ?? null,
+      explorerUrl: dataset.anchorExplorerUrl ?? null,
+      memo: dataset.anchorMemo ?? null,
+      anchoredAt: dataset.anchoredAt ?? null,
+    },
+    verification: {
+      algorithm: 'sha256-merkle-v1',
+      // Canonical per-reading hash: SHA-256 over the UTF-8 bytes of this JSON
+      // string (keys in this exact order, no whitespace):
+      //   {"sensorId":"<id>","timestamp":"<iso>","value":<number>,"unit":"<str>"}
+      canonicalReadingHash:
+        'sha256(utf8(JSON.stringify({sensorId,timestamp,value,unit})))',
+      sortRule: 'ascending by timestamp, then by id as tiebreaker',
+      leafRule: 'leaf = sha256(utf8(readingHashHex))',
+      oddLayerRule: 'last node is duplicated',
+    },
+    readings: rawReadings,
+  };
+};
+
+app.get("/server/datasets/:id/export", async (c) => {
+  try {
+    const user = await getUserFromToken(c.req.raw);
+    if (!user) return c.json({ error: 'Unauthorized' }, 401);
+
+    const id = c.req.param('id');
+    const datasets = await kv.getByPrefix(`dataset:`);
+    const dataset = datasets.find((d: any) => d.id === id);
+    if (!dataset) return c.json({ error: 'Dataset not found' }, 404);
+
+    // Owner-only for private datasets; public datasets are exported via the
+    // /public/ route so that auth isn't required from a buyer's browser.
+    const sensor = await kv.get(`sensor:${user.id}:${dataset.sensorId}`);
+    if (!sensor) return c.json({ error: 'Forbidden' }, 403);
+
+    const payload = await buildDatasetExport(dataset);
+    return c.json(payload);
+  } catch (error) {
+    console.error('Failed to export dataset:', error);
+    return c.json({ error: 'Failed to export dataset' }, 500);
+  }
+});
+
+app.get("/server/public/datasets/:id/export", async (c) => {
+  try {
+    const id = c.req.param('id');
+    const datasets = await kv.getByPrefix(`dataset:`);
+    const dataset = datasets.find((d: any) => d.id === id);
+    if (!dataset) return c.json({ error: 'Dataset not found' }, 404);
+    if (!dataset.isPublic) return c.json({ error: 'Dataset is not public' }, 403);
+
+    const payload = await buildDatasetExport(dataset);
+    return c.json(payload);
+  } catch (error) {
+    console.error('Failed to export public dataset:', error);
+    return c.json({ error: 'Failed to export dataset' }, 500);
+  }
+});
+
 // Delete dataset
 app.delete("/server/datasets/:id", async (c) => {
   try {

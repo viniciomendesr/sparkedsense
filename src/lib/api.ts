@@ -370,6 +370,18 @@ export const datasetAPI = {
     }
     return response.json();
   },
+
+  export: async (id: string, accessToken: string) => {
+    const response = await fetch(`${API_BASE}/datasets/${id}/export`, {
+      method: "GET",
+      headers: getAuthHeaders(accessToken),
+    });
+    if (!response.ok) {
+      const error = await response.text();
+      throw new Error(`Failed to export dataset: ${error}`);
+    }
+    return response.json();
+  },
 };
 
 // Stats API
@@ -471,6 +483,18 @@ export const publicAPI = {
     }
     const data = await response.json();
     return data.datasets as Dataset[];
+  },
+
+  exportPublicDataset: async (id: string) => {
+    const response = await fetch(`${API_BASE}/public/datasets/${id}/export`, {
+      method: "GET",
+      headers: getAuthHeaders(),
+    });
+    if (!response.ok) {
+      const error = await response.text();
+      throw new Error(`Failed to export public dataset: ${error}`);
+    }
+    return response.json();
   },
 
   getPublicReadings: async (sensorId: string, limit = 100, opts?: { slim?: boolean }) => {
