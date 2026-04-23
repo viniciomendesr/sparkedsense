@@ -697,12 +697,12 @@ export function AuditPage({ dataset: propDataset, sensor: propSensor, onBack }: 
             </div>
 
             <div className="rounded-lg border border-border overflow-hidden mb-4">
-              <div className="grid grid-cols-12 gap-2 px-4 py-2 bg-muted/40 text-xs uppercase tracking-wide" style={{ color: 'var(--text-muted)' }}>
-                <div className="col-span-1">#</div>
-                <div className="col-span-4">Timestamp</div>
-                <div className="col-span-2">Value</div>
-                <div className="col-span-4">Computed hash</div>
-                <div className="col-span-1 text-right">Prove</div>
+              <div className="grid grid-cols-[48px_minmax(0,2fr)_minmax(0,1fr)_minmax(0,2fr)_100px] gap-3 px-4 py-2 bg-muted/40 text-xs uppercase tracking-wide" style={{ color: 'var(--text-muted)' }}>
+                <div>#</div>
+                <div>Timestamp</div>
+                <div>Value</div>
+                <div>Computed hash</div>
+                <div className="text-right">Action</div>
               </div>
               {pageRows.length === 0 && (
                 <div className="px-4 py-6 text-center text-sm" style={{ color: 'var(--text-muted)' }}>
@@ -712,32 +712,43 @@ export function AuditPage({ dataset: propDataset, sensor: propSensor, onBack }: 
               {pageRows.map(({ r, i }) => (
                 <div
                   key={r.id}
-                  className={`grid grid-cols-12 gap-2 px-4 py-2 items-center text-sm border-t border-border hover:bg-muted/20 ${activeProof?.readingIndex === i ? 'bg-primary/5' : ''}`}
+                  className={`grid grid-cols-[48px_minmax(0,2fr)_minmax(0,1fr)_minmax(0,2fr)_100px] gap-3 px-4 py-2 items-center text-sm border-t border-border hover:bg-muted/20 ${activeProof?.readingIndex === i ? 'bg-primary/5' : ''}`}
                 >
-                  <div className="col-span-1 font-mono text-xs" style={{ color: 'var(--text-muted)' }}>
+                  <div className="font-mono text-xs" style={{ color: 'var(--text-muted)' }}>
                     {i + 1}
                   </div>
-                  <div className="col-span-4 font-mono text-xs" style={{ color: 'var(--text-primary)' }}>
+                  <div className="font-mono text-xs truncate" style={{ color: 'var(--text-primary)' }}>
                     {new Date(r.timestamp).toLocaleString()}
                   </div>
-                  <div className="col-span-2" style={{ color: 'var(--text-primary)' }}>
+                  <div style={{ color: 'var(--text-primary)' }}>
                     {r.value} {r.unit}
                   </div>
-                  <div className="col-span-4 font-mono text-xs truncate" style={{ color: 'var(--text-secondary)' }} title={r.computedHash}>
+                  <div className="font-mono text-xs truncate" style={{ color: 'var(--text-secondary)' }} title={r.computedHash}>
                     {r.computedHash.slice(0, 16)}…
                   </div>
-                  <div className="col-span-1 flex justify-end">
+                  <div className="flex justify-end">
                     <Button
                       size="sm"
-                      variant="ghost"
+                      variant="outline"
                       onClick={() => handleProveReading(i)}
                       disabled={computingProof !== null}
-                      className="h-7 px-2"
+                      className="h-8 px-3 border-primary/40 text-primary hover:bg-primary/10"
                     >
                       {computingProof === i ? (
-                        <Loader2 className="w-3 h-3 animate-spin" />
+                        <>
+                          <Loader2 className="w-3 h-3 mr-1.5 animate-spin" />
+                          Proving
+                        </>
+                      ) : activeProof?.readingIndex === i ? (
+                        <>
+                          <Check className="w-3 h-3 mr-1.5" />
+                          Proven
+                        </>
                       ) : (
-                        <Shield className="w-3 h-3" />
+                        <>
+                          <Shield className="w-3 h-3 mr-1.5" />
+                          Prove
+                        </>
                       )}
                     </Button>
                   </div>
@@ -772,71 +783,101 @@ export function AuditPage({ dataset: propDataset, sensor: propSensor, onBack }: 
             </div>
 
             {activeProof && (
-              <div className="mt-6 p-5 rounded-lg bg-muted/30 border border-border">
-                <div className="flex items-start justify-between gap-3 mb-4">
+              <div className="mt-6 rounded-lg bg-background/40 border border-primary/30 overflow-hidden">
+                {/* Header */}
+                <div className="px-5 py-4 bg-primary/5 border-b border-primary/20 flex items-start justify-between gap-3">
                   <div>
-                    <h3 style={{ fontWeight: 600, color: 'var(--text-primary)' }}>
-                      Proof for reading #{activeProof.readingIndex + 1}
-                    </h3>
+                    <div className="flex items-center gap-2">
+                      <Shield className="w-4 h-4 text-primary" />
+                      <h3 style={{ fontWeight: 600, color: 'var(--text-primary)' }}>
+                        Proof for reading #{activeProof.readingIndex + 1}
+                      </h3>
+                    </div>
                     <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>
                       {new Date(activeProof.reading.timestamp).toLocaleString()} · {activeProof.reading.value} {activeProof.reading.unit}
                     </p>
                   </div>
                   <Button size="sm" variant="ghost" onClick={() => setActiveProof(null)}>
+                    <XCircle className="w-4 h-4 mr-1.5" />
                     Close
                   </Button>
                 </div>
 
-                <div className="space-y-4">
+                <div className="p-5 space-y-6">
                   {/* Step 1 — raw */}
                   <div>
-                    <p className="text-xs uppercase tracking-wide mb-1" style={{ color: 'var(--text-muted)' }}>
-                      Step 1 — Raw reading data
-                    </p>
-                    <pre className="text-xs font-mono p-3 rounded bg-background/60 border border-border overflow-x-auto" style={{ color: 'var(--text-primary)' }}>
-{`sensorId:   ${dataset?.sensorId}
-timestamp:  ${activeProof.reading.timestamp}
-value:      ${activeProof.reading.value}
-unit:       ${activeProof.reading.unit}`}
-                    </pre>
+                    <div className="flex items-center gap-2 mb-2">
+                      <div className="w-6 h-6 rounded-full bg-primary/20 text-primary flex items-center justify-center text-xs" style={{ fontWeight: 600 }}>1</div>
+                      <p className="text-sm" style={{ fontWeight: 600, color: 'var(--text-primary)' }}>
+                        The raw values you can see in the file
+                      </p>
+                    </div>
+                    <div className="ml-8 p-4 rounded bg-background/60 border border-border text-xs font-mono space-y-1" style={{ color: 'var(--text-primary)' }}>
+                      <div className="flex gap-3"><span className="w-20 shrink-0" style={{ color: 'var(--text-muted)' }}>sensorId</span><span className="break-all">{dataset?.sensorId}</span></div>
+                      <div className="flex gap-3"><span className="w-20 shrink-0" style={{ color: 'var(--text-muted)' }}>timestamp</span><span>{activeProof.reading.timestamp}</span></div>
+                      <div className="flex gap-3"><span className="w-20 shrink-0" style={{ color: 'var(--text-muted)' }}>value</span><span>{activeProof.reading.value}</span></div>
+                      <div className="flex gap-3"><span className="w-20 shrink-0" style={{ color: 'var(--text-muted)' }}>unit</span><span>{activeProof.reading.unit}</span></div>
+                    </div>
                   </div>
 
                   {/* Step 2 — canonical hash */}
                   <div>
-                    <p className="text-xs uppercase tracking-wide mb-1" style={{ color: 'var(--text-muted)' }}>
-                      Step 2 — Canonical JSON → SHA-256 (the reading hash)
-                    </p>
-                    <pre className="text-xs font-mono p-3 rounded bg-background/60 border border-border break-all whitespace-pre-wrap" style={{ color: 'var(--text-secondary)' }}>
-{activeProof.canonicalString}
-                    </pre>
-                    <div className="mt-2 p-2 rounded bg-background/60 border border-border flex items-center justify-between gap-2">
-                      <span className="text-xs" style={{ color: 'var(--text-muted)' }}>reading hash →</span>
-                      <code className="text-xs font-mono break-all" style={{ color: 'var(--text-primary)' }}>
-                        {activeProof.reading.computedHash}
-                      </code>
+                    <div className="flex items-center gap-2 mb-2">
+                      <div className="w-6 h-6 rounded-full bg-primary/20 text-primary flex items-center justify-center text-xs" style={{ fontWeight: 600 }}>2</div>
+                      <p className="text-sm" style={{ fontWeight: 600, color: 'var(--text-primary)' }}>
+                        Canonical JSON → SHA-256 (the reading hash)
+                      </p>
                     </div>
-                    <p className="text-xs mt-2" style={{ color: 'var(--text-muted)' }}>
-                      Leaf (domain-separated): <code className="font-mono">sha256(readingHashHex)</code> = <code className="font-mono">{activeProof.leafHash.slice(0, 32)}…</code>
-                    </p>
+                    <div className="ml-8 space-y-2">
+                      <div>
+                        <p className="text-xs mb-1" style={{ color: 'var(--text-muted)' }}>Canonical string</p>
+                        <pre className="text-xs font-mono p-3 rounded bg-background/60 border border-border break-all whitespace-pre-wrap" style={{ color: 'var(--text-secondary)' }}>
+{activeProof.canonicalString}
+                        </pre>
+                      </div>
+                      <div>
+                        <p className="text-xs mb-1" style={{ color: 'var(--text-muted)' }}>Reading hash = sha256(canonical)</p>
+                        <code className="block p-3 rounded bg-background/60 border border-border text-xs font-mono break-all" style={{ color: 'var(--text-primary)' }}>
+                          {activeProof.reading.computedHash}
+                        </code>
+                      </div>
+                      <div>
+                        <p className="text-xs mb-1" style={{ color: 'var(--text-muted)' }}>Leaf (domain-separated) = sha256(readingHashHex)</p>
+                        <code className="block p-3 rounded bg-background/60 border border-border text-xs font-mono break-all" style={{ color: 'var(--text-primary)' }}>
+                          {activeProof.leafHash}
+                        </code>
+                      </div>
+                    </div>
                   </div>
 
                   {/* Step 3 — walk the tree */}
                   <div>
-                    <p className="text-xs uppercase tracking-wide mb-1" style={{ color: 'var(--text-muted)' }}>
-                      Step 3 — Walk {activeProof.steps.length} layer{activeProof.steps.length === 1 ? '' : 's'} up to the root
-                    </p>
-                    <div className="space-y-2">
+                    <div className="flex items-center gap-2 mb-2">
+                      <div className="w-6 h-6 rounded-full bg-primary/20 text-primary flex items-center justify-center text-xs" style={{ fontWeight: 600 }}>3</div>
+                      <p className="text-sm" style={{ fontWeight: 600, color: 'var(--text-primary)' }}>
+                        Walk {activeProof.steps.length} layer{activeProof.steps.length === 1 ? '' : 's'} up to the root
+                      </p>
+                    </div>
+                    <div className="ml-8 space-y-3">
                       {activeProof.steps.map((s) => (
-                        <div key={s.step} className="p-3 rounded bg-background/60 border border-border text-xs font-mono" style={{ color: 'var(--text-secondary)' }}>
-                          <div style={{ color: 'var(--text-muted)' }}>layer {s.step} — sibling comes from the {s.siblingFromSide}</div>
-                          <div className="mt-1 truncate" title={s.left}>
-                            L: {s.left}
+                        <div key={s.step} className="rounded bg-background/60 border border-border overflow-hidden">
+                          <div className="px-3 py-1.5 text-xs bg-muted/30 border-b border-border flex justify-between" style={{ color: 'var(--text-muted)' }}>
+                            <span>Layer {s.step}</span>
+                            <span>sibling from the <strong style={{ color: 'var(--text-primary)' }}>{s.siblingFromSide}</strong></span>
                           </div>
-                          <div className="truncate" title={s.right}>
-                            R: {s.right}
-                          </div>
-                          <div className="mt-1" style={{ color: 'var(--text-primary)' }}>
-                            → sha256(L‖R) = {s.result}
+                          <div className="p-3 text-xs font-mono space-y-1" style={{ color: 'var(--text-secondary)' }}>
+                            <div className="flex gap-2">
+                              <span className="w-4 shrink-0" style={{ color: 'var(--text-muted)' }}>L</span>
+                              <span className="break-all">{s.left}</span>
+                            </div>
+                            <div className="flex gap-2">
+                              <span className="w-4 shrink-0" style={{ color: 'var(--text-muted)' }}>R</span>
+                              <span className="break-all">{s.right}</span>
+                            </div>
+                            <div className="flex gap-2 pt-1 border-t border-border mt-1" style={{ color: 'var(--text-primary)' }}>
+                              <span className="w-4 shrink-0" style={{ color: 'var(--text-muted)' }}>→</span>
+                              <span className="break-all">sha256(L‖R) = {s.result}</span>
+                            </div>
                           </div>
                         </div>
                       ))}
@@ -844,45 +885,51 @@ unit:       ${activeProof.reading.unit}`}
                   </div>
 
                   {/* Step 4 — match on-chain */}
-                  <div className={`p-4 rounded-lg border ${activeProof.matchesOnchain ? 'bg-success/10 border-success/30' : 'bg-destructive/10 border-destructive/30'}`}>
-                    <div className="flex items-start gap-3">
-                      {activeProof.matchesOnchain ? (
-                        <CheckCircle2 className="w-5 h-5 text-success mt-0.5" />
-                      ) : (
-                        <XCircle className="w-5 h-5 text-destructive mt-0.5" />
-                      )}
-                      <div className="flex-1 min-w-0">
+                  <div>
+                    <div className="flex items-center gap-2 mb-2">
+                      <div className="w-6 h-6 rounded-full bg-primary/20 text-primary flex items-center justify-center text-xs" style={{ fontWeight: 600 }}>4</div>
+                      <p className="text-sm" style={{ fontWeight: 600, color: 'var(--text-primary)' }}>
+                        Compare with the root anchored on Solana
+                      </p>
+                    </div>
+                    <div className={`ml-8 p-4 rounded-lg border ${activeProof.matchesOnchain ? 'bg-success/10 border-success/30' : 'bg-destructive/10 border-destructive/30'}`}>
+                      <div className="flex items-start gap-3 mb-3">
+                        {activeProof.matchesOnchain ? (
+                          <CheckCircle2 className="w-5 h-5 text-success mt-0.5 shrink-0" />
+                        ) : (
+                          <XCircle className="w-5 h-5 text-destructive mt-0.5 shrink-0" />
+                        )}
                         <p style={{ fontWeight: 600, color: activeProof.matchesOnchain ? 'var(--success)' : 'var(--destructive)' }}>
                           {activeProof.matchesOnchain
                             ? 'This reading is cryptographically committed to the on-chain anchor'
                             : 'Final root does not match the on-chain anchor'}
                         </p>
-                        <div className="mt-3 grid gap-2">
-                          <div>
-                            <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Computed (from walking the proof)</p>
-                            <code className="block p-2 rounded bg-background/60 font-mono text-xs break-all" style={{ color: 'var(--text-primary)' }}>
-                              {activeProof.finalRoot}
-                            </code>
-                          </div>
-                          <div>
-                            <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Anchored on Solana</p>
-                            <code className="block p-2 rounded bg-background/60 font-mono text-xs break-all" style={{ color: 'var(--text-primary)' }}>
-                              {dataset?.merkleRoot}
-                            </code>
-                          </div>
-                        </div>
-                        {dataset?.anchorExplorerUrl && (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => window.open(dataset.anchorExplorerUrl, '_blank')}
-                            className="mt-3 border-border"
-                          >
-                            Cross-check on Solana Explorer
-                            <ExternalLink className="w-3 h-3 ml-2" />
-                          </Button>
-                        )}
                       </div>
+                      <div className="space-y-2">
+                        <div>
+                          <p className="text-xs mb-1" style={{ color: 'var(--text-muted)' }}>Computed (from walking the proof)</p>
+                          <code className="block p-3 rounded bg-background/60 border border-border font-mono text-xs break-all" style={{ color: 'var(--text-primary)' }}>
+                            {activeProof.finalRoot}
+                          </code>
+                        </div>
+                        <div>
+                          <p className="text-xs mb-1" style={{ color: 'var(--text-muted)' }}>Anchored on Solana</p>
+                          <code className="block p-3 rounded bg-background/60 border border-border font-mono text-xs break-all" style={{ color: 'var(--text-primary)' }}>
+                            {dataset?.merkleRoot}
+                          </code>
+                        </div>
+                      </div>
+                      {dataset?.anchorExplorerUrl && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => window.open(dataset.anchorExplorerUrl, '_blank')}
+                          className="mt-3 border-border w-full sm:w-auto"
+                        >
+                          Cross-check on Solana Explorer
+                          <ExternalLink className="w-3 h-3 ml-2" />
+                        </Button>
+                      )}
                     </div>
                   </div>
                 </div>
