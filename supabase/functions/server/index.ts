@@ -1046,26 +1046,61 @@ app.post("/server/datasets/:id/anchor", async (c) => {
     const id = c.req.param('id');
     const datasets = await kv.getByPrefix(`dataset:`);
     const dataset = datasets.find((d: any) => d.id === id);
-    
+
     if (!dataset) {
       return c.json({ error: 'Dataset not found' }, 404);
     }
 
-    // Get readings in dataset range and calculate actual Merkle root.
-    // Pass an explicit high limit — without it getSensorReadings defaults to
-    // PAGE_SIZE=1000, which would silently build a Merkle tree over only the
-    // first 1000 readings and break verifiability for datasets with more.
-    const allSensorsForAnchor = await kv.getByPrefix('sensor:');
-    const anchorSensor = allSensorsForAnchor.find((s: any) => s.id === dataset.sensorId);
+    // Ownership check: only the sensor's owner can anchor / re-anchor.
+    const ownSensor = await kv.get(`sensor:${user.id}:${dataset.sensorId}`);
+    if (!ownSensor) {
+      return c.json({ error: 'Forbidden: you do not own this sensor' }, 403);
+    }
+
     const start = new Date(dataset.startDate);
     const end = new Date(dataset.endDate);
-    const readingsInRange = await getSensorReadings(dataset.sensorId, anchorSensor, { since: start, until: end, limit: Number.MAX_SAFE_INTEGER });
 
-    const tree = await buildMerkleTreeFromReadings(readingsInRange);
-    const merkleRoot = tree.root;
+    // Optional pre-computed path: the client sends a Merkle root it already
+    // built from the public export. This avoids WORKER_RESOURCE_LIMIT when
+    // hashing tens of thousands of readings server-side on the free tier.
+    // The root the client sends must be reproducible from the export spec,
+    // so it's not a trust issue — anyone else can verify it the same way.
+    let clientRoot: string | undefined;
+    let clientReadingsCount: number | undefined;
+    try {
+      const body = await c.req.json();
+      if (body && typeof body === 'object') {
+        if (typeof body.merkleRoot === 'string' && /^[0-9a-f]{64}$/.test(body.merkleRoot)) {
+          clientRoot = body.merkleRoot;
+        }
+        if (typeof body.readingsCount === 'number' && body.readingsCount > 0) {
+          clientReadingsCount = body.readingsCount;
+        }
+      }
+    } catch {
+      // empty body — fall back to server-side computation
+    }
+
+    let merkleRoot: string;
+    let anchoredCount: number;
+
+    if (clientRoot && clientReadingsCount) {
+      merkleRoot = clientRoot;
+      anchoredCount = clientReadingsCount;
+    } else {
+      // Fallback: fetch + hash + build tree server-side. Works for small datasets
+      // but hits WORKER_RESOURCE_LIMIT past ~5-10k readings on the free tier.
+      const allSensorsForAnchor = await kv.getByPrefix('sensor:');
+      const anchorSensor = allSensorsForAnchor.find((s: any) => s.id === dataset.sensorId);
+      const readingsInRange = await getSensorReadings(dataset.sensorId, anchorSensor, { since: start, until: end, limit: Number.MAX_SAFE_INTEGER });
+      const tree = await buildMerkleTreeFromReadings(readingsInRange);
+      merkleRoot = tree.root;
+      anchoredCount = readingsInRange.length;
+    }
 
     dataset.status = 'anchoring';
     dataset.merkleRoot = merkleRoot;
+    dataset.readingsCount = anchoredCount;
     dataset.accessCount = dataset.accessCount || 0;
     await kv.set(`dataset:${dataset.sensorId}:${id}`, dataset);
 
@@ -1078,7 +1113,7 @@ app.post("/server/datasets/:id/anchor", async (c) => {
         const result = await anchorMerkleRoot({
           datasetId: id,
           merkleRoot,
-          readingsCount: readingsInRange.length,
+          readingsCount: anchoredCount,
           startISO: start.toISOString(),
           endISO: end.toISOString(),
         });

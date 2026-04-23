@@ -304,10 +304,15 @@ export const datasetAPI = {
     return data.dataset as Dataset;
   },
 
-  anchor: async (id: string, accessToken: string) => {
+  anchor: async (
+    id: string,
+    accessToken: string,
+    precomputed?: { merkleRoot: string; readingsCount: number },
+  ) => {
     const response = await fetch(`${API_BASE}/datasets/${id}/anchor`, {
       method: "POST",
       headers: getAuthHeaders(accessToken),
+      body: precomputed ? JSON.stringify(precomputed) : undefined,
     });
     if (!response.ok) {
       const error = await response.text();

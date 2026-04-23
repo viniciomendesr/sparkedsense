@@ -47,7 +47,7 @@ import { useAuth } from '../lib/auth-context';
 import { readingAPI, datasetAPI, merkleAPI, sensorAPI } from '../lib/api';
 import { supabase } from '../utils/supabase/client';
 import { toast } from 'sonner@2.0.3';
-import { verifyMerkleRoot } from '../lib/merkle';
+import { verifyMerkleRoot, computeMerkleRoot } from '../lib/merkle';
 import { formatDataSize } from '../lib/format';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { EditSensorDialog } from '../components/edit-sensor-dialog';
@@ -309,13 +309,46 @@ export function SensorDetailPage({
     }
   };
 
-  const handleAnchorDataset = async (dataset: Dataset) => {
+  // Compute the Merkle root in the browser by pulling the dataset's export
+  // and recomputing canonical per-reading hashes from raw values. This offloads
+  // tens of thousands of SHA-256 ops away from the edge function, which hits
+  // WORKER_RESOURCE_LIMIT on the free tier past ~5k readings.
+  const computeAnchorInputs = async (datasetId: string) => {
+    const payload = await datasetAPI.export(datasetId, accessToken!);
+    const readings = payload.readings ?? [];
+    const sorted = [...readings].sort((a: any, b: any) => {
+      const dt = new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime();
+      if (dt !== 0) return dt;
+      return (a.id || '').localeCompare(b.id || '');
+    });
+    const sensorId = payload.dataset?.sensorId ?? sensor.id;
+    const hashes = await Promise.all(sorted.map(async (r: any) => {
+      const canonical = JSON.stringify({
+        sensorId,
+        timestamp: r.timestamp,
+        value: r.value,
+        unit: r.unit,
+      });
+      const buf = await globalThis.crypto.subtle.digest(
+        'SHA-256',
+        new TextEncoder().encode(canonical),
+      );
+      return Array.from(new Uint8Array(buf))
+        .map((b) => b.toString(16).padStart(2, '0'))
+        .join('');
+    }));
+    const merkleRoot = await computeMerkleRoot(hashes);
+    return { merkleRoot, readingsCount: sorted.length };
+  };
+
+  const handleAnchorDataset = async (dataset: Dataset, isReanchor = false) => {
     if (!accessToken) return;
-    // Optimistic UI: flip status so the button disables while the tx is in flight.
+    const verb = isReanchor ? 'Re-anchoring' : 'Anchoring';
     setDatasets(prev => prev.map(d => d.id === dataset.id ? { ...d, status: 'anchoring' } : d));
-    toast.info('Anchoring on Solana...', { description: 'Signing and submitting tx, ~5–20 seconds.' });
+    toast.info(`${verb} on Solana...`, { description: 'Computing root locally + signing tx, ~5–20 seconds.' });
     try {
-      const updated = await datasetAPI.anchor(dataset.id, accessToken);
+      const { merkleRoot, readingsCount } = await computeAnchorInputs(dataset.id);
+      const updated = await datasetAPI.anchor(dataset.id, accessToken, { merkleRoot, readingsCount });
       const parsed: Dataset = {
         ...updated,
         startDate: new Date(updated.startDate),
@@ -324,7 +357,9 @@ export function SensorDetailPage({
       };
       setDatasets(prev => prev.map(d => d.id === dataset.id ? parsed : d));
       if (parsed.anchorExplorerUrl) {
-        toast.success('Anchored on Solana', { description: 'Click "View onchain anchor" to verify.' });
+        toast.success(isReanchor ? 'Re-anchored on Solana' : 'Anchored on Solana', {
+          description: 'Click "View onchain anchor" to verify.',
+        });
       } else {
         toast.warning('Dataset marked anchored (fallback)', {
           description: 'Solana tx unavailable — simulated anchor used. Retry to get a real onchain signature.',
@@ -333,7 +368,9 @@ export function SensorDetailPage({
     } catch (error: any) {
       console.error('Anchor failed:', error);
       setDatasets(prev => prev.map(d => d.id === dataset.id ? { ...d, status: 'failed' } : d));
-      toast.error('Anchor failed', { description: error.message || 'You can retry from the dataset card.' });
+      toast.error(`${verb.replace('ing', '').toLowerCase()} failed`, {
+        description: error.message || 'You can retry from the dataset card.',
+      });
     }
   };
 
@@ -966,6 +1003,16 @@ export function SensorDetailPage({
                             >
                               <Download className="w-3 h-3 mr-2" />
                               Download
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => handleAnchorDataset(dataset, true)}
+                              className="border-secondary/50 text-secondary hover:bg-secondary/10"
+                              title="Submit a new Solana memo tx with the current Merkle root"
+                            >
+                              <RefreshCw className="w-3 h-3 mr-2" />
+                              Re-anchor
                             </Button>
                           </>
                         )}
