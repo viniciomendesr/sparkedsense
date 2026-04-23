@@ -54,7 +54,7 @@ export function PublicSensorDetailPage({
         setLoading(true);
         const [readingsData, historicalData, datasetsData] = await Promise.all([
           publicAPI.getPublicReadings(sensor.id, 100),
-          publicAPI.getPublicReadings(sensor.id, 50000),
+          publicAPI.getPublicReadings(sensor.id, 25000),
           publicAPI.getPublicDatasets(sensor.id),
         ]);
 

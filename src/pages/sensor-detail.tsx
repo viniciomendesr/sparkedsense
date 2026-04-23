@@ -125,7 +125,7 @@ export function SensorDetailPage({
 
       const [readingsRes, historicalRes, datasetsRes, merkleRes] = await Promise.allSettled([
         readingAPI.list(sensor.id, accessToken, 100),
-        readingAPI.list(sensor.id, accessToken, 10000),
+        readingAPI.list(sensor.id, accessToken, 25000),
         datasetAPI.list(sensor.id, accessToken),
         merkleAPI.getHourlyRoot(sensor.id, accessToken),
       ]);

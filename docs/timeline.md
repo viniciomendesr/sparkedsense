@@ -387,4 +387,9 @@ Supabase advisor reported 5 ERROR + 4 WARN; migration 004 drove it to 0 ERROR + 
 4. ~~Anchoring transaction format~~ — done: Memo Program via [ADR-012](adr/012-solana-memo-anchoring.md)
 5. ~~Real Solana devnet integration (dataset anchoring)~~ — done (Phase 15); NFT minting still deferred
 
-**Also pending (post-demo):** ESP32-S3 secp256k1 signing pipeline port (removes [ADR-011](adr/011-unsigned-dev-bypass-for-unported-devices.md) bypass), firmware resilience (WiFi reconnection, watchdog, HTTPS timeout — see audit), backend modularization (`index.ts` split), open source documentation, ESP8266 migration from legacy `POST /sensor-data` to native envelope emission (see ADR-010 item 8), server-side downsampling (LTTB) for charts as sensors grow past ~200k readings, Supabase Auth `leaked_password_protection` toggle via dashboard.
+**Also pending (post-demo):** ESP32-S3 secp256k1 signing pipeline port (removes [ADR-011](adr/011-unsigned-dev-bypass-for-unported-devices.md) bypass), firmware resilience (WiFi reconnection, watchdog, HTTPS timeout — see audit), backend modularization (`index.ts` split), open source documentation, ESP8266 migration from legacy `POST /sensor-data` to native envelope emission (see ADR-010 item 8), server-side downsampling (LTTB) for charts past ~30k readings per fetch (free-tier edge memory is the binding constraint, not CPU), Supabase Auth `leaked_password_protection` toggle via dashboard.
+
+### Phase 15 addendum — parallel pagination (22 Apr 2026)
+
+- `getSensorReadings` (backend) now does a HEAD count first, then fires all pages of 1000 in parallel with `Promise.all` instead of serial. Reduces 50-page fetch from ~15-18s (which was hitting `WORKER_RESOURCE_LIMIT` HTTP 546 on the Supabase free tier) to ~3s on the wall clock. Frontend historical chart bumped from 10k → 25k rows.
+- Binding constraint at this point is **memory on the free-tier edge runtime** (~256MB), not wall clock. Experimentally, 30k rows works; 50k still trips `WORKER_RESOURCE_LIMIT`. Real fix for sensors with >30k useful historical rows is LTTB downsampling server-side — listed under post-demo pending.

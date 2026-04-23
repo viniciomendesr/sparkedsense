@@ -140,35 +140,57 @@ const getSensorReadings = async (
   }
 
   // Query sensor_readings from PostgreSQL.
-  // Supabase PostgREST caps responses at 1000 rows; paginate via .range() when
-  // the caller asks for more (the historical chart, for example).
+  //
+  // Supabase PostgREST caps each response at 1000 rows. We page via .range(),
+  // but firing pages **in parallel** is ~10–15x faster than serial when the
+  // caller asks for a lot (e.g. historical chart asking for 50k). On the
+  // Supabase free tier the edge runtime's wall-clock limit around 15-20s was
+  // hitting HTTP 546 WORKER_RESOURCE_LIMIT with serial fetches.
+  //
+  // Approach: HEAD count first to know exactly how many pages to fire, then
+  // fire them all with Promise.all. Past ~50k rows this still becomes a
+  // bottleneck — real fix at that scale is LTTB downsampling, not more paging.
   const PAGE_SIZE = 1000;
   const target = options?.limit ?? PAGE_SIZE;
-  const rows: any[] = [];
-  let offset = 0;
 
-  while (rows.length < target) {
-    const remaining = target - rows.length;
-    const fetchCount = Math.min(PAGE_SIZE, remaining);
-    let q = supabase
+  let countQ = supabase
+    .from('sensor_readings')
+    .select('id', { count: 'exact', head: true })
+    .eq('nft_address', nftAddress);
+  if (options?.since) countQ = countQ.gte('timestamp', options.since.toISOString());
+  if (options?.until) countQ = countQ.lte('timestamp', options.until.toISOString());
+  const { count, error: countErr } = await countQ;
+  if (countErr) {
+    console.error('getSensorReadings count error:', countErr.message);
+    return [];
+  }
+  const totalAvailable = count ?? 0;
+  const totalToFetch = Math.min(totalAvailable, target);
+  if (totalToFetch === 0) return [];
+
+  const numPages = Math.ceil(totalToFetch / PAGE_SIZE);
+  const pagePromises = Array.from({ length: numPages }, (_, i) => {
+    const offset = i * PAGE_SIZE;
+    const endInclusive = Math.min(offset + PAGE_SIZE, totalToFetch) - 1;
+    let pq = supabase
       .from('sensor_readings')
       .select('id, timestamp, data')
       .eq('nft_address', nftAddress)
       .order('timestamp', { ascending: false })
-      .range(offset, offset + fetchCount - 1);
+      .range(offset, endInclusive);
+    if (options?.since) pq = pq.gte('timestamp', options.since.toISOString());
+    if (options?.until) pq = pq.lte('timestamp', options.until.toISOString());
+    return pq;
+  });
 
-    if (options?.since) q = q.gte('timestamp', options.since.toISOString());
-    if (options?.until) q = q.lte('timestamp', options.until.toISOString());
-
-    const { data, error } = await q;
+  const pageResults = await Promise.all(pagePromises);
+  const rows: any[] = [];
+  for (const { data, error } of pageResults) {
     if (error) {
-      console.error('getSensorReadings PG page error:', error.message);
-      break;
+      console.error('getSensorReadings page error:', error.message);
+      continue;
     }
-    if (!data || data.length === 0) break;
-    rows.push(...data);
-    if (data.length < fetchCount) break; // reached end
-    offset += data.length;
+    if (data) rows.push(...data);
   }
 
   // Map PG rows to KV format
