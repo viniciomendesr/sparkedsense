@@ -524,59 +524,11 @@ export function PublicSensorDetailPage({
               </div>
             )}
 
-            {/* Hash Verification Section */}
-            <div className="mt-6 pt-6 border-t border-border space-y-4">
-              <h4 style={{ fontWeight: 600, color: 'var(--text-primary)' }}>
-                Verify Data Integrity
-              </h4>
-              
-              {/* Single Hash Verification */}
-              <div className="space-y-2">
-                <Label htmlFor="verify-hash">Single Hash Verification</Label>
-                <div className="flex gap-2">
-                  <Input
-                    id="verify-hash"
-                    value={verifyHashInput}
-                    onChange={(e) => setVerifyHashInput(e.target.value)}
-                    placeholder="Paste reading hash to verify..."
-                    className="flex-1 bg-input border-border font-mono text-sm"
-                  />
-                  <Button
-                    onClick={handleVerifyHash}
-                    variant="outline"
-                    className="border-primary/50 hover:bg-primary/10"
-                  >
-                    <Shield className="w-4 h-4 mr-2" />
-                    Verify Hash
-                  </Button>
-                </div>
-              </div>
-
-              {/* Hourly Data Verification */}
-              <div className="space-y-2">
-                <Label htmlFor="verify-merkle">Hourly Data Verification</Label>
-                <div className="flex gap-2">
-                  <Input
-                    id="verify-merkle"
-                    value={verifyMerkleInput}
-                    onChange={(e) => setVerifyMerkleInput(e.target.value)}
-                    placeholder="Paste Merkle root to verify last hour..."
-                    className="flex-1 bg-input border-border font-mono text-sm"
-                  />
-                  <Button
-                    onClick={handleVerifyMerkle}
-                    variant="outline"
-                    className="border-primary/50 hover:bg-primary/10"
-                  >
-                    <Shield className="w-4 h-4 mr-2" />
-                    Verify Root
-                  </Button>
-                </div>
-                <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
-                  Verifies the Merkle root for all {lastHourReadings.length} readings from the last hour
-                </p>
-              </div>
-            </div>
+            {/* Data integrity is now proven via the Solana anchor on each dataset
+                (see the Public Datasets section below — each anchored dataset
+                links to its transaction on Solana Explorer). The previous
+                paste-your-own-hash panel was removed because it required users
+                to arrive with a hash in hand — see ADR-007 UX rework. */}
           </Card>
         </div>
 
@@ -649,16 +601,31 @@ export function PublicSensorDetailPage({
                       </div>
 
                       {dataset.status === 'anchored' && (
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => onViewAudit(dataset, sensor)}
-                          className="border-border hover:bg-muted"
-                        >
-                          <Shield className="w-3 h-3 mr-2" />
-                          View Public Audit
-                          <ExternalLink className="w-3 h-3 ml-2" />
-                        </Button>
+                        <div className="flex flex-wrap gap-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => onViewAudit(dataset, sensor)}
+                            className="border-border hover:bg-muted"
+                          >
+                            <Shield className="w-3 h-3 mr-2" />
+                            View Public Audit
+                            <ExternalLink className="w-3 h-3 ml-2" />
+                          </Button>
+                          {dataset.anchorExplorerUrl && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => window.open(dataset.anchorExplorerUrl, '_blank')}
+                              className="border-secondary/50 hover:bg-secondary/10"
+                              title={`Anchored on Solana ${dataset.anchorCluster ?? 'devnet'}`}
+                            >
+                              <Shield className="w-3 h-3 mr-2" />
+                              View onchain anchor
+                              <ExternalLink className="w-3 h-3 ml-2" />
+                            </Button>
+                          )}
+                        </div>
                       )}
                     </div>
                   </div>

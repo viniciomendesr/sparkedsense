@@ -25,3 +25,4 @@ Each ADR documents a single architectural decision with its context, rationale, 
 | [009](009-wifi-geolocation-for-sensors.md) | WiFi-based geolocation for physical sensors (Mylnikov API) | Accepted | 2026-03-17 | 2026-03-17 |
 | [010](010-sensor-agnostic-ingestion-envelope.md) | Sensor-agnostic ingestion envelope via CloudEvents + SenML | Accepted | 2026-04-22 | 2026-04-22 |
 | [011](011-unsigned-dev-bypass-for-unported-devices.md) | `unsigned_dev` signature bypass for devices without ported signing pipeline | Accepted | 2026-04-22 | 2026-04-22 |
+| [012](012-solana-memo-anchoring.md) | Solana Memo Program anchoring for dataset Merkle roots (ADR-007 partial) | Accepted | 2026-04-22 | 2026-04-22 |

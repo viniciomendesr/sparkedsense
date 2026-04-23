@@ -45,6 +45,12 @@ export interface Dataset {
   createdAt: Date;
   accessCount?: number;
   previewReadings?: Reading[];
+  // ADR-007: real Solana anchor metadata (present when anchoring succeeded onchain).
+  anchorTxSignature?: string;
+  anchorExplorerUrl?: string;
+  anchorCluster?: 'devnet' | 'mainnet-beta' | 'testnet';
+  anchorMemo?: string;
+  anchoredAt?: string;
 }
 
 export interface MerkleProofStep {

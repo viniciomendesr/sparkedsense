@@ -343,17 +343,48 @@ Supabase advisor reported 5 ERROR + 4 WARN; migration 004 drove it to 0 ERROR + 
 
 ---
 
+## Phase 15 — Solana anchoring for dataset Merkle roots (22 Apr 2026)
+
+**Contributor:** Vinicio Mendes (with AI assistance — Claude)
+
+### Added ([ADR-012](adr/012-solana-memo-anchoring.md))
+- **Real Solana devnet anchoring** for dataset Merkle roots via the Memo Program. Replaces the `setTimeout(3000)` simulation in `POST /server/datasets/:id/anchor`.
+- **Dedicated server keypair** `36QSgfod6aZQTn57dshDdhAxfNaVtpvQzHUQWJUaVUYy` (devnet, funded with 6 SOL). Secret stored exclusively in Supabase secret `SOLANA_SERVER_SECRET_KEY_BASE58`, isolated from personal wallets.
+- **Manual transaction construction** in [`supabase/functions/server/lib/solana.ts`](../supabase/functions/server/lib/solana.ts) — legacy tx format, ed25519 sign via `@noble/curves`, raw JSON-RPC. `@solana/web3.js` was rejected because it triggers `WORKER_RESOURCE_LIMIT` in Supabase Edge Runtime even with lazy imports.
+- **Self-describing memo payload**: `sparked-sense://dataset/<id>?root=<merkleRoot>&n=<count>&from=<iso>&to=<iso>` — under 566 bytes, readable directly in Solana Explorer's log.
+- **Diagnostic endpoint** `GET /server/public/anchor-info` returns `{ enabled, publicKey, cluster, balanceSol, explorerAddressUrl }` so third parties can audit the anchoring wallet.
+- **Dataset schema** gains `anchorTxSignature`, `anchorExplorerUrl`, `anchorCluster`, `anchorMemo`, `anchoredAt` ([src/lib/types.ts](../src/lib/types.ts)).
+
+### Changed (UX)
+- **Removed the "Verify Data Integrity" paste-your-own-hash panel** from owner and public sensor detail pages. The panel was cryptographically correct but UX-zero — nobody arrives at the page with a Merkle root in the clipboard. The audit page retains a technical Merkle-proof view for advanced users.
+- **Added "View onchain anchor" button** per anchored dataset, linking directly to `explorer.solana.com/tx/<sig>?cluster=devnet`. Trust delegates to Solana Explorer rather than to an input field.
+- **Removed the placeholder "View Sensor NFT on Solana Explorer"** button in the owner view — it pointed at a bare `explorer.solana.com/` URL because device-identity NFTs are still simulated. Comment in code references ADR-007/ADR-012 for context.
+
+### Fallback + resilience
+- If `SOLANA_SERVER_SECRET_KEY_BASE58` is unset or the anchor tx fails (RPC flake, wallet unfunded, devnet reset), the handler falls back to the legacy simulated flow. The dataset still publishes; the UI surfaces the absence of an anchor tx gracefully (button only renders when `anchorExplorerUrl` is truthy).
+
+### Verified
+- Test tx [`2HNdwW5qLZNszUmVq43uXfwbLtXqQS3VPbVTjSiVu1bfCzWFanXXSMXwkdgVqueVsuWV8tBrbfz5pzjCobb4Dx7W`](https://explorer.solana.com/tx/2HNdwW5qLZNszUmVq43uXfwbLtXqQS3VPbVTjSiVu1bfCzWFanXXSMXwkdgVqueVsuWV8tBrbfz5pzjCobb4Dx7W?cluster=devnet) submitted and confirmed at slot 457407445. Memo log shows the URI with `root=e3b0c44298fc1c14...`. Fee: 5000 lamports.
+- `GET /server/public/anchor-info` returns 200 with current balance (6 SOL at deploy time).
+- Existing `/server/sensor-data` and other endpoints continue to work (lazy import prevents the heavy Solana module from loading on every cold start).
+
+### Still deferred from ADR-007 (post-demo)
+- NFT minting for device identity — `sensor.nftAddress` remains `devnet_sim_<hex>` until a Metaplex-capable runtime replaces the Deno edge function for this specific task.
+- Anchoring via a custom Solana program (PDA) — not needed; Memo Program gives integrity proof at negligible cost and maximum tooling support.
+
+---
+
 ## Current status
 
 **Implemented:** End-to-end DePIN flow with secp256k1 cryptographic authentication, simulated digital identity (nftAddress), real-time dashboard with crypto-style live + historical charts (Min/Max/Avg/Points, gradient fill, timeframe selector, brush zoom), binary Merkle tree with inclusion proofs for dataset integrity verification (client-side and server-side), PostgreSQL as canonical storage for sensor readings (KV store retained only for sensor metadata and datasets), Solana devnet wallet under project control, homepage with Featured Public Sensors, WiFi-based geolocation with neighborhood label via Apple WiFi DB through Cloudflare Worker, owner-editable sensor name/description, RLS hardening across `devices`/`sensor_readings`/`sensor_metrics` and security_invoker view. Structured documentation with ADR index and timeline in `docs/`.
 
 **In progress (Phase 13, target 2026-04-24):** Sensor-agnostic ingestion envelope per [ADR-010](adr/010-sensor-agnostic-ingestion-envelope.md) — CloudEvents + SenML adoption, `POST /reading` endpoint live with dual-write from legacy `/sensor-data`, renderer framework for heterogeneous modalities (environmental telemetry, ML classification, transcription). Remaining: ESP32-S3 acoustic client + MacBook whisper gateway emitting envelopes directly. During the demo window, Node 2 events use the [ADR-011](adr/011-unsigned-dev-bypass-for-unported-devices.md) `unsigned_dev` bypass until the signing pipeline is ported.
 
-**Next steps (from ADR-007, deferred until post-demo):**
+**Next steps (from ADR-007, mostly closed):**
 1. ~~Fix Merkle tree implementation~~ — done (Phase 8)
 2. ~~Deploy WiFi geolocation provider with Brazil coverage~~ — done (Apple WiFi DB via Cloudflare Worker, env `GEOLOCATE_WORKER_URL` in use)
-3. Define NFT metadata schema for device identity
-4. Define anchoring transaction format (Memo Program vs metadata update vs PDA)
-5. Implement real Solana devnet integration (NFT minting + dataset anchoring)
+3. NFT metadata schema for device identity — deferred (needs Metaplex-capable runtime; `sensor.nftAddress` stays simulated)
+4. ~~Anchoring transaction format~~ — done: Memo Program via [ADR-012](adr/012-solana-memo-anchoring.md)
+5. ~~Real Solana devnet integration (dataset anchoring)~~ — done (Phase 15); NFT minting still deferred
 
 **Also pending (post-demo):** ESP32-S3 secp256k1 signing pipeline port (removes [ADR-011](adr/011-unsigned-dev-bypass-for-unported-devices.md) bypass), firmware resilience (WiFi reconnection, watchdog, HTTPS timeout — see audit), backend modularization (`index.ts` split), open source documentation, ESP8266 migration from legacy `POST /sensor-data` to native envelope emission (see ADR-010 item 8), server-side downsampling (LTTB) for charts as sensors grow past ~200k readings, Supabase Auth `leaked_password_protection` toggle via dashboard.

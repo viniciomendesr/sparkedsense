@@ -15,6 +15,8 @@ import {
   parseSource,
   type Envelope,
 } from "./lib/ingest.ts";
+// Solana integration is loaded lazily inside handlers that need it — the
+// @solana/web3.js bundle is too large for eager cold-start in the edge runtime.
 
 const app = new Hono();
 
@@ -988,16 +990,46 @@ app.post("/server/datasets/:id/anchor", async (c) => {
 
     const tree = await buildMerkleTreeFromReadings(readingsInRange);
     const merkleRoot = tree.root;
-    const transactionId = generateId().replace(/-/g, '');
 
     dataset.status = 'anchoring';
     dataset.merkleRoot = merkleRoot;
-    dataset.transactionId = transactionId;
     dataset.accessCount = dataset.accessCount || 0;
-    
     await kv.set(`dataset:${dataset.sensorId}:${id}`, dataset);
 
-    // Simulate async anchoring process
+    // ADR-007 partial: real Solana Memo Program anchoring when the server
+    // keypair is configured. Lazy import — @solana/web3.js is too heavy to load
+    // on every edge-function cold start; keep it scoped to this handler only.
+    if (Deno.env.get("SOLANA_SERVER_SECRET_KEY_BASE58")) {
+      try {
+        const { anchorMerkleRoot } = await import("./lib/solana.ts");
+        const result = await anchorMerkleRoot({
+          datasetId: id,
+          merkleRoot,
+          readingsCount: readingsInRange.length,
+          startISO: start.toISOString(),
+          endISO: end.toISOString(),
+        });
+        dataset.status = 'anchored';
+        dataset.transactionId = result.signature;
+        dataset.anchorTxSignature = result.signature;
+        dataset.anchorExplorerUrl = result.explorerUrl;
+        dataset.anchorCluster = result.cluster;
+        dataset.anchorMemo = result.memo;
+        dataset.anchoredAt = new Date().toISOString();
+        await kv.set(`dataset:${dataset.sensorId}:${id}`, dataset);
+        return c.json({ dataset });
+      } catch (anchorErr: any) {
+        console.error('Solana anchoring failed — falling back to simulated:', anchorErr.message);
+        // Fall through to simulated flow so the dataset still publishes;
+        // the UI surfaces the lack of an anchor tx when anchorExplorerUrl is null.
+      }
+    }
+
+    // Legacy simulated flow — kept for environments without a Solana wallet
+    // configured and as a safety net for transient RPC failures.
+    const transactionId = generateId().replace(/-/g, '');
+    dataset.transactionId = transactionId;
+    await kv.set(`dataset:${dataset.sensorId}:${id}`, dataset);
     setTimeout(async () => {
       dataset.status = 'anchored';
       await kv.set(`dataset:${dataset.sensorId}:${id}`, dataset);
@@ -2006,6 +2038,49 @@ app.get("/server/public/readings-v2/:sensorId", async (c) => {
     console.error('GET /public/readings-v2 error:', error);
     return c.json({ error: error.message || 'Internal server error' }, 500);
   }
+});
+
+// GET /server/public/anchor-info — diagnostic: returns server wallet + cluster.
+// Lazy-imports Solana libs only when the endpoint is hit.
+app.get("/server/public/anchor-info", async (c) => {
+  const enabled = !!Deno.env.get("SOLANA_SERVER_SECRET_KEY_BASE58");
+  const rpcUrl = Deno.env.get("SOLANA_RPC_URL") ?? "https://api.devnet.solana.com";
+  const cluster = rpcUrl.includes("mainnet") ? "mainnet-beta" : rpcUrl.includes("testnet") ? "testnet" : "devnet";
+
+  if (!enabled) {
+    return c.json({ enabled: false, publicKey: null, cluster, balanceSol: null, explorerAddressUrl: null });
+  }
+
+  let publicKey: string | null = null;
+  try {
+    const { getServerPublicKey } = await import("./lib/solana.ts");
+    publicKey = getServerPublicKey();
+  } catch (err) {
+    console.error("solana module load failed:", err);
+  }
+
+  let lamports: number | null = null;
+  if (publicKey) {
+    try {
+      const res = await fetch(rpcUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "getBalance", params: [publicKey] }),
+      });
+      const data = await res.json();
+      lamports = data?.result?.value ?? null;
+    } catch (_e) {
+      // non-fatal
+    }
+  }
+
+  return c.json({
+    enabled,
+    publicKey,
+    cluster,
+    balanceSol: lamports != null ? lamports / 1_000_000_000 : null,
+    explorerAddressUrl: publicKey ? `https://explorer.solana.com/address/${publicKey}?cluster=${cluster}` : null,
+  });
 });
 
 // POST /server/device-location (no user JWT required)

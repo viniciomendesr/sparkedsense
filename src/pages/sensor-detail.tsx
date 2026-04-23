@@ -529,15 +529,10 @@ export function SensorDetailPage({
                 {sensor.type.charAt(0).toUpperCase() + sensor.type.slice(1)}
               </Badge>
             </div>
-            <Button
-              variant="outline"
-              size="sm"
-              className="border-secondary/50 hover:bg-secondary/10"
-              onClick={() => window.open('https://explorer.solana.com/', '_blank')}
-            >
-              <ExternalLink className="w-3 h-3 mr-2" />
-              View Sensor NFT on Solana Explorer
-            </Button>
+            {/* Device identity NFT minting is deferred (see ADR-007 partial in
+                Phase 15 — only dataset anchoring is onchain today). The per-
+                dataset "View onchain anchor" button in the Datasets tab links
+                to the actual Solana transaction. */}
           </div>
           
           {sensor.lastReading && (
@@ -777,59 +772,10 @@ export function SensorDetailPage({
               </div>
             )}
 
-            {/* Hash Verification Section */}
-            <div className="mt-6 pt-6 border-t border-border space-y-4">
-              <h4 style={{ fontWeight: 600, color: 'var(--text-primary)' }}>
-                Verify Data Integrity
-              </h4>
-              
-              {/* Single Hash Verification */}
-              <div className="space-y-2">
-                <Label htmlFor="verify-hash">Single Hash Verification</Label>
-                <div className="flex gap-2">
-                  <Input
-                    id="verify-hash"
-                    value={verifyHashInput}
-                    onChange={(e) => setVerifyHashInput(e.target.value)}
-                    placeholder="Paste reading hash to verify..."
-                    className="flex-1 bg-input border-border font-mono text-sm"
-                  />
-                  <Button
-                    onClick={handleVerifyHash}
-                    variant="outline"
-                    className="border-primary/50 hover:bg-primary/10"
-                  >
-                    <Shield className="w-4 h-4 mr-2" />
-                    Verify Hash
-                  </Button>
-                </div>
-              </div>
-
-              {/* Hourly Data Verification */}
-              <div className="space-y-2">
-                <Label htmlFor="verify-merkle">Hourly Data Verification</Label>
-                <div className="flex gap-2">
-                  <Input
-                    id="verify-merkle"
-                    value={verifyMerkleInput}
-                    onChange={(e) => setVerifyMerkleInput(e.target.value)}
-                    placeholder="Paste Merkle root to verify last hour..."
-                    className="flex-1 bg-input border-border font-mono text-sm"
-                  />
-                  <Button
-                    onClick={handleVerifyMerkle}
-                    variant="outline"
-                    className="border-primary/50 hover:bg-primary/10"
-                  >
-                    <Shield className="w-4 h-4 mr-2" />
-                    Verify Root
-                  </Button>
-                </div>
-                <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
-                  Verifies the Merkle root for all {lastHourReadings.length} readings from the last hour
-                </p>
-              </div>
-            </div>
+            {/* Data integrity is now proven via the Solana anchor on each
+                dataset (Datasets tab — each anchored dataset links to the
+                transaction on Solana Explorer). Paste-your-own-hash panel
+                removed — see ADR-007 UX rework. */}
           </Card>
         </TabsContent>
 
@@ -936,7 +882,21 @@ export function SensorDetailPage({
                             <ExternalLink className="w-3 h-3 ml-2" />
                           </Button>
                         )}
-                        
+
+                        {dataset.anchorExplorerUrl && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => window.open(dataset.anchorExplorerUrl, '_blank')}
+                            className="border-secondary/50 hover:bg-secondary/10"
+                            title={`Anchored on Solana ${dataset.anchorCluster ?? 'devnet'}`}
+                          >
+                            <Shield className="w-3 h-3 mr-2" />
+                            View onchain anchor
+                            <ExternalLink className="w-3 h-3 ml-2" />
+                          </Button>
+                        )}
+
                         <Button
                           variant="outline"
                           size="sm"
