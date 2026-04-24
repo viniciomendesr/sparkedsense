@@ -2386,6 +2386,28 @@ app.post("/server/reading", async (c) => {
         linkedSensor.status = 'active';
         linkedSensor.updatedAt = new Date().toISOString();
 
+        // ADR-012: Mirror firmware-supplied location on the envelope (CloudEvents
+        // extensions: `latitude`, `longitude`, `location`) into the sensor KV row.
+        // Only fills fields that are still empty — once a user edits location via
+        // the UI, their value is authoritative and we never overwrite it. `real`
+        // sensors go through the signed-geolocation path instead, so we gate by mode.
+        if (linkedSensor.mode === 'unsigned_dev') {
+          const envAny = envelope as unknown as Record<string, unknown>;
+          const envLat = typeof envAny.latitude === 'number' ? envAny.latitude as number : null;
+          const envLng = typeof envAny.longitude === 'number' ? envAny.longitude as number : null;
+          const envLoc = typeof envAny.location === 'string' ? envAny.location as string : null;
+
+          if (envLat !== null && linkedSensor.latitude == null) {
+            linkedSensor.latitude = envLat;
+          }
+          if (envLng !== null && linkedSensor.longitude == null) {
+            linkedSensor.longitude = envLng;
+          }
+          if (envLoc && (!linkedSensor.location || linkedSensor.location.length === 0)) {
+            linkedSensor.location = envLoc;
+          }
+        }
+
         // Mirror a minimal lastReading for numeric SenML envelopes so existing
         // sparklines keep working during the dual-write period.
         if (envelope.type === 'io.sparkedsense.sensor.environmental' || envelope.type === 'io.sparkedsense.sensor.generic') {
