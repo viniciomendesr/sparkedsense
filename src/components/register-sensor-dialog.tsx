@@ -352,10 +352,10 @@ export function RegisterSensorDialog({ open, onOpenChange, onRegister }: Registe
                     </div>
                     <div>
                       <h3 className="mb-2" style={{ fontWeight: 600, color: 'var(--text-primary)' }}>
-                        Unsigned Physical Sensor
+                        Unsigned Sensor
                       </h3>
                       <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
-                        Real physical device publishing real data, but whose signing pipeline is still being ported. No NFT until signing lands.
+                        For physical devices whose signing pipeline is still being ported
                       </p>
                     </div>
                   </div>
@@ -364,7 +364,7 @@ export function RegisterSensorDialog({ open, onOpenChange, onRegister }: Registe
 
               <div className="p-4 rounded-lg bg-info/10 border border-info/30">
                 <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
-                  💡 Mock sensors automatically generate random readings for testing and visualization. Unsigned Physical Sensors accept real readings under the ADR-011 signature bypass — the badge makes the attestation gap explicit.
+                  💡 Mock sensors generate random readings for demos. Unsigned sensors accept real data under the ADR-011 signature bypass until firmware signing is ported.
                 </p>
               </div>
 
