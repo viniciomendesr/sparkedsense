@@ -26,3 +26,4 @@ Each ADR documents a single architectural decision with its context, rationale, 
 | [010](010-sensor-agnostic-ingestion-envelope.md) | Sensor-agnostic ingestion envelope via CloudEvents + SenML | Accepted | 2026-04-22 | 2026-04-22 |
 | [011](011-unsigned-dev-bypass-for-unported-devices.md) | `unsigned_dev` signature bypass for devices without ported signing pipeline | Accepted | 2026-04-22 | 2026-04-22 |
 | [012](012-solana-memo-anchoring.md) | Solana Memo Program anchoring for dataset Merkle roots (ADR-007 partial) | Accepted | 2026-04-22 | 2026-04-22 |
+| [013](013-edge-function-jwt-disabled-for-device-ingestion.md) | Disable Supabase JWT gateway on the `server` Edge Function | Accepted | 2026-04-24 | 2026-04-24 |

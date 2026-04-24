@@ -1,0 +1,16 @@
+# Supabase configuration for this project.
+#
+# Only settings that must persist across redeploys live here.
+# See https://supabase.com/docs/guides/cli/config for the full reference.
+
+project_id = "djzexivvddzzduetmkel"
+
+# The `server` Edge Function is the public ingestion endpoint for IoT devices
+# (ESP8266, ESP32-S3, MacBook MEC gateway). These devices authenticate by
+# proving possession of a secp256k1 private key over a canonical-JSON
+# envelope (or via the ADR-011 `unsigned_dev` bypass), not by presenting a
+# Supabase-issued JWT. Enabling the gateway's JWT verification would block
+# every device call with `UNAUTHORIZED_NO_AUTH_HEADER` before the handler
+# runs. See ADR-013.
+[functions.server]
+verify_jwt = false

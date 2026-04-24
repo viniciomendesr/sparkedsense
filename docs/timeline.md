@@ -389,6 +389,12 @@ Supabase advisor reported 5 ERROR + 4 WARN; migration 004 drove it to 0 ERROR + 
 
 **Also pending (post-demo):** ESP32-S3 secp256k1 signing pipeline port (removes [ADR-011](adr/011-unsigned-dev-bypass-for-unported-devices.md) bypass), firmware resilience (WiFi reconnection, watchdog, HTTPS timeout — see audit), backend modularization (`index.ts` split), open source documentation, ESP8266 migration from legacy `POST /sensor-data` to native envelope emission (see ADR-010 item 8), server-side downsampling (LTTB) for charts past ~30k readings per fetch (free-tier edge memory is the binding constraint, not CPU), Supabase Auth `leaked_password_protection` toggle via dashboard.
 
+### Phase 15 addendum — persist `verify_jwt=false` for device ingestion (24 Apr 2026)
+
+- A redeploy of the `server` Edge Function (rate-limit tuning for the 2026-04-24 Claro demo) silently re-enabled Supabase's gateway-level JWT verification, breaking every device call with `UNAUTHORIZED_NO_AUTH_HEADER`. Root cause: the original deploy used `--no-verify-jwt` as a CLI flag, not a persisted project setting.
+- Fix: created [`supabase/config.toml`](../supabase/config.toml) with `[functions.server] verify_jwt = false`. Supabase CLI reads this on every deploy, so the flag is no longer deploy-time discipline. Redeployed and validated via `POST /server/register-device` returning a 64-hex `challenge` without an Authorization header.
+- Rationale captured in [ADR-013](adr/013-edge-function-jwt-disabled-for-device-ingestion.md): IoT devices authenticate by secp256k1 possession (ADR-003) or the ADR-011 `unsigned_dev` marker, not by Supabase JWT. Enabling the gateway check blocks legitimate device traffic before the handler runs.
+
 ### Phase 15 addendum — parallel pagination (22 Apr 2026)
 
 - `getSensorReadings` (backend) now does a HEAD count first, then fires all pages of 1000 in parallel with `Promise.all` instead of serial. Reduces 50-page fetch from ~15-18s (which was hitting `WORKER_RESOURCE_LIMIT` HTTP 546 on the Supabase free tier) to ~3s on the wall clock. Frontend historical chart bumped from 10k → 25k rows.
