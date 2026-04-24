@@ -121,10 +121,11 @@ export function PublicSensorDetailPage({
     };
   }, [sensor.id, sensor.type, sensor.mode]);
 
-  // Simulate live streaming for public view
+  // Simulate live streaming for public view.
+  // ADR-012: `unsigned_dev` publishes real firmware events with the signature
+  // bypass marker and must never be fed synthetic readings — only `mock`.
   useEffect(() => {
-    // Only generate mock live data for mock sensors
-    if (!isStreaming || sensor.status !== 'active' || sensor.mode === 'real') return;
+    if (!isStreaming || sensor.status !== 'active' || sensor.mode !== 'mock') return;
 
     const interval = setInterval(() => {
       setReadings(prev => {
