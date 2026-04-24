@@ -2478,13 +2478,23 @@ app.get("/server/public/readings-v2/:sensorId", async (c) => {
     if (!sensor) return c.json({ error: 'Sensor not found' }, 404);
     if (sensor.visibility !== 'public') return c.json({ error: 'Sensor readings are not public' }, 403);
 
-    // Translate KV sensor id → devices.id via claim_token
+    // Translate KV sensor id → devices.id.
+    // Real/mock sensors link via claim_token; unsigned_dev (ADR-012) links via
+    // devicePublicKey (no claim_token is ever issued for that mode).
     let deviceId: string | null = null;
     if (sensor.claimToken) {
       const { data: dev } = await supabase
         .from('devices')
         .select('id')
         .eq('claim_token', sensor.claimToken)
+        .maybeSingle();
+      if (dev?.id) deviceId = dev.id as string;
+    }
+    if (!deviceId && sensor.devicePublicKey) {
+      const { data: dev } = await supabase
+        .from('devices')
+        .select('id')
+        .eq('public_key', sensor.devicePublicKey)
         .maybeSingle();
       if (dev?.id) deviceId = dev.id as string;
     }
