@@ -426,8 +426,9 @@ export function HomePage({ onGetStarted }: HomePageProps) {
         </div>
       </section>
 
+      {false && (<>
       {/* Research Foundation */}
-      <section className="px-4 sm:px-6 py-12 sm:py-16 border-t border-border bg-card/30">
+        <section className="px-4 sm:px-6 py-12 sm:py-16 border-t border-border bg-card/30">
         <div className="max-w-6xl mx-auto">
           <div className="text-center mb-8 sm:mb-12">
             <h2 className="mb-3 text-xl sm:text-2xl" style={{ fontWeight: 600, color: 'var(--text-primary)' }}>
@@ -761,6 +762,7 @@ export function HomePage({ onGetStarted }: HomePageProps) {
           </div>
         </div>
       </section>
+      </>)}
 
       {/* CTA */}
       <section className="px-4 sm:px-6 py-12 sm:py-16 border-t border-border bg-card/30">
