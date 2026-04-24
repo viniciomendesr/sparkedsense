@@ -192,9 +192,11 @@ export function SensorDetailPage({
     };
   }, [sensor.id, sensor.type, sensor.mode, accessToken]);
 
-  // Simulate live streaming for MOCK sensors
+  // Simulate live streaming for MOCK sensors only.
+  // ADR-012: `unsigned_dev` publishes real events from physical firmware and
+  // must never be fed synthetic readings — use the polling branch below instead.
   useEffect(() => {
-    if (!isStreaming || sensor.status !== 'active' || sensor.mode === 'real') return;
+    if (!isStreaming || sensor.status !== 'active' || sensor.mode !== 'mock') return;
 
     const interval = setInterval(() => {
       setReadings(prev => {
@@ -207,9 +209,12 @@ export function SensorDetailPage({
     return () => clearInterval(interval);
   }, [isStreaming, sensor.id, sensor.type, sensor.status, sensor.mode]);
 
-  // Poll real sensor data from API every 15 seconds
+  // Poll real sensor data from API every 15 seconds.
+  // ADR-012: `unsigned_dev` sensors publish real events (with the signature
+  // bypass marker) and must be polled just like `real` — both read from the
+  // canonical `readings` table server-side.
   useEffect(() => {
-    if (!isStreaming || sensor.mode !== 'real' || !accessToken) return;
+    if (!isStreaming || sensor.mode === 'mock' || !accessToken) return;
 
     const pollReadings = async () => {
       try {

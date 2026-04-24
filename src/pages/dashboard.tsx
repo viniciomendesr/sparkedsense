@@ -171,8 +171,10 @@ export function DashboardPage({ onViewSensor }: DashboardPageProps) {
             });
           }, 2000);
           intervals.push(interval);
-        } else if (sensor.mode === 'real' && accessToken) {
-          // Real sensors: poll API every 15 seconds
+        } else if (sensor.mode !== 'mock' && accessToken) {
+          // Real + unsigned_dev sensors: poll API every 15 seconds.
+          // ADR-012: unsigned_dev publishes real firmware events (with signature
+          // bypass) and must be polled the same way — never fed synthetic data.
           const pollRealData = async () => {
             try {
               const readingsData = await readingAPI.list(sensor.id, accessToken, 30);

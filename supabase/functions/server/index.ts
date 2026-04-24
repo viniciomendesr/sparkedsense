@@ -87,6 +87,65 @@ const resolveNftAddress = async (sensorId: string, sensor: any): Promise<string 
   return device?.nft_address || null;
 };
 
+// ADR-012: resolve sensor (mode=unsigned_dev) → devices.id via devicePublicKey.
+// unsigned_dev sensors never receive a claim_token, so we match on the raw pubkey
+// the frontend stored when calling register-device Step 1.
+const resolveDeviceIdForUnsignedDev = async (sensor: any): Promise<string | null> => {
+  if (!sensor?.devicePublicKey) return null;
+  const { data: device } = await supabase
+    .from('devices')
+    .select('id')
+    .eq('public_key', sensor.devicePublicKey)
+    .maybeSingle();
+  return device?.id ?? null;
+};
+
+// Map a row from the canonical `readings` table (ADR-010 envelope storage) to the
+// flat reading shape the frontend renders. Handles the two envelope families:
+//   - io.sparkedsense.inference.classification: { class, confidence, model_id }
+//   - io.sparkedsense.sensor.environmental / .generic: SenML array [{ n, v, u }]
+// Anything else falls through with a best-effort mapping.
+const envelopeRowToKvFormat = (row: any, sensorId: string) => {
+  const eventType = row.event_type as string;
+  const data = row.data ?? {};
+  let variable = 'value';
+  let value: number = 0;
+  let unit = '';
+
+  if (eventType === 'io.sparkedsense.inference.classification') {
+    // confidence ∈ [0, 1]; surface it as-is and carry the predicted class label
+    // into `variable` so the dashboard displays the inference outcome.
+    variable = typeof data.class === 'string' ? data.class : 'class';
+    value = typeof data.confidence === 'number' ? data.confidence : 0;
+    unit = '';
+  } else if (
+    eventType === 'io.sparkedsense.sensor.environmental' ||
+    eventType === 'io.sparkedsense.sensor.generic'
+  ) {
+    const records = Array.isArray(data) ? data : [];
+    const first = records[0] as Record<string, unknown> | undefined;
+    if (first) {
+      variable = (first.n as string) ?? 'value';
+      value = typeof first.v === 'number' ? (first.v as number) : 0;
+      unit = (first.u as string) ?? '';
+    }
+  }
+
+  return {
+    id: row.id,
+    sensorId,
+    timestamp: row.time,
+    variable,
+    value,
+    unit,
+    // unsigned_dev rows are explicitly unverified; any other signature value is a
+    // real secp256k1 signature that the /server/reading handler already verified.
+    verified: row.signature !== 'unsigned_dev',
+    hash: row.id,
+    signature: row.signature as string,
+  };
+};
+
 // Map a PG sensor_readings row to the KV reading format expected by frontend
 const pgReadingToKvFormat = async (pgRow: any, sensorId: string, sensorType: string) => {
   const config = sensorTypeConfigs[sensorType] || sensorTypeConfigs.temperature;
@@ -125,6 +184,29 @@ const getSensorReadings = async (
     readings.sort((a: any, b: any) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
     if (options?.limit) readings = readings.slice(0, options.limit);
     return readings;
+  }
+
+  // ADR-012: unsigned_dev sensors live in the `readings` table (ADR-010 envelopes),
+  // keyed by device_id not nft_address. Resolve via devicePublicKey and query.
+  if (sensor?.mode === 'unsigned_dev') {
+    const deviceId = await resolveDeviceIdForUnsignedDev(sensor);
+    if (!deviceId) return [];
+
+    let q = supabase
+      .from('readings')
+      .select('id, time, event_type, data, signature')
+      .eq('device_id', deviceId)
+      .order('time', { ascending: false });
+    if (options?.since) q = q.gte('time', options.since.toISOString());
+    if (options?.until) q = q.lte('time', options.until.toISOString());
+    if (options?.limit) q = q.limit(options.limit);
+
+    const { data: rows, error } = await q;
+    if (error) {
+      console.error('getSensorReadings (unsigned_dev) error:', error.message);
+      return [];
+    }
+    return (rows ?? []).map(r => envelopeRowToKvFormat(r, sensorId));
   }
 
   // Real sensors: resolve nft_address and query PG
@@ -209,6 +291,20 @@ const countSensorReadings = async (
     if (options?.since) readings = readings.filter((r: any) => new Date(r.timestamp) >= options.since!);
     if (options?.until) readings = readings.filter((r: any) => new Date(r.timestamp) <= options.until!);
     return readings.length;
+  }
+  // ADR-012: unsigned_dev → count rows in `readings` table by device_id
+  if (sensor?.mode === 'unsigned_dev') {
+    const deviceId = await resolveDeviceIdForUnsignedDev(sensor);
+    if (!deviceId) return 0;
+    let q = supabase
+      .from('readings')
+      .select('id', { count: 'exact', head: true })
+      .eq('device_id', deviceId);
+    if (options?.since) q = q.gte('time', options.since.toISOString());
+    if (options?.until) q = q.lte('time', options.until.toISOString());
+    const { count, error } = await q;
+    if (error) return 0;
+    return count ?? 0;
   }
   const nftAddress = await resolveNftAddress(sensorId, sensor);
   if (!nftAddress) {
@@ -2287,6 +2383,29 @@ app.post("/server/reading", async (c) => {
               value: first.v,
               unit: (first.u as string) ?? '',
               verified: true,
+              hash: envelope.id,
+              signature: envelope.signature.substring(0, 16),
+            };
+          }
+        } else if (envelope.type === 'io.sparkedsense.inference.classification') {
+          // ADR-012: acoustic inference events (Node 2 Claro demo) carry
+          // { class, confidence, model_id }. Surface confidence as the numeric
+          // value and the predicted class label as the `variable` so the card
+          // shows e.g. "claro — 0.91" instead of a stale/synthetic reading.
+          const data = envelope.data as Record<string, unknown> | undefined;
+          const cls = typeof data?.class === 'string' ? data!.class as string : 'class';
+          const confidence = typeof data?.confidence === 'number' ? data!.confidence as number : null;
+          if (confidence !== null) {
+            linkedSensor.lastReading = {
+              id: envelope.id,
+              sensorId: linkedSensor.id,
+              timestamp: envelope.time,
+              variable: cls,
+              value: confidence,
+              unit: '',
+              // Unsigned envelopes are explicitly unverified; any other signature
+              // was already checked by verifyEnvelopeSignature above.
+              verified: envelope.signature !== 'unsigned_dev',
               hash: envelope.id,
               signature: envelope.signature.substring(0, 16),
             };
