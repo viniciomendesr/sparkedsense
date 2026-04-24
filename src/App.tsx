@@ -21,6 +21,7 @@ import { Toaster } from "./components/ui/sonner";
 import { Button } from "./components/ui/button";
 import { AuthProvider, useAuth } from "./lib/auth-context";
 import { sensorAPI, publicAPI } from "./lib/api";
+import { ThemeProvider } from "next-themes@0.4.6";
 
 function HomeWrapper() {
   const navigate = useNavigate();
@@ -345,10 +346,18 @@ function AppContent() {
 
 export default function App() {
   return (
-    <AuthProvider>
-      <Router>
-        <AppContent />
-      </Router>
-    </AuthProvider>
+    <ThemeProvider
+      attribute="class"
+      defaultTheme="dark"
+      enableSystem={false}
+      storageKey="sparked-sense-theme"
+      disableTransitionOnChange
+    >
+      <AuthProvider>
+        <Router>
+          <AppContent />
+        </Router>
+      </AuthProvider>
+    </ThemeProvider>
   );
 }

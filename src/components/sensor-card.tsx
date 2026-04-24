@@ -17,7 +17,7 @@ interface SensorCardProps {
 export function SensorCard({ sensor, liveData, onViewDetails, showMiniSparkline = true }: SensorCardProps) {
   const statusColors = {
     active: 'bg-success',
-    inactive: 'bg-[#4A4F59]',
+    inactive: 'bg-[var(--text-disabled)]',
     reconnecting: 'bg-warning',
   };
 
