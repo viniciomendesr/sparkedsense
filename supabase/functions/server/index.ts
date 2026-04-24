@@ -105,7 +105,13 @@ const resolveDeviceIdForUnsignedDev = async (sensor: any): Promise<string | null
 //   - io.sparkedsense.inference.classification: { class, confidence, model_id }
 //   - io.sparkedsense.sensor.environmental / .generic: SenML array [{ n, v, u }]
 // Anything else falls through with a best-effort mapping.
-const envelopeRowToKvFormat = (row: any, sensorId: string) => {
+//
+// `hash` is a deterministic SHA-256 of the flat projection (sensorId + timestamp
+// + variable + value + unit), matching the shape used by `pgReadingToKvFormat`
+// for legacy sensor_readings rows. This is a *content* hash (tamper-evident for
+// the payload between storage and display), not a signature hash — unsigned_dev
+// rows still carry `verified: false` so the UI can show the attestation gap.
+const envelopeRowToKvFormat = async (row: any, sensorId: string) => {
   const eventType = row.event_type as string;
   const data = row.data ?? {};
   let variable = 'value';
@@ -131,17 +137,24 @@ const envelopeRowToKvFormat = (row: any, sensorId: string) => {
     }
   }
 
+  const timestamp = row.time;
+  const canonical = JSON.stringify({ sensorId, timestamp, variable, value, unit });
+  const hashBuf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(canonical));
+  const hash = Array.from(new Uint8Array(hashBuf))
+    .map(b => b.toString(16).padStart(2, '0'))
+    .join('');
+
   return {
     id: row.id,
     sensorId,
-    timestamp: row.time,
+    timestamp,
     variable,
     value,
     unit,
     // unsigned_dev rows are explicitly unverified; any other signature value is a
     // real secp256k1 signature that the /server/reading handler already verified.
     verified: row.signature !== 'unsigned_dev',
-    hash: row.id,
+    hash,
     signature: row.signature as string,
   };
 };
@@ -206,7 +219,7 @@ const getSensorReadings = async (
       console.error('getSensorReadings (unsigned_dev) error:', error.message);
       return [];
     }
-    return (rows ?? []).map(r => envelopeRowToKvFormat(r, sensorId));
+    return Promise.all((rows ?? []).map(r => envelopeRowToKvFormat(r, sensorId)));
   }
 
   // Real sensors: resolve nft_address and query PG
