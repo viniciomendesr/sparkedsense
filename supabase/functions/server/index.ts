@@ -191,12 +191,18 @@ const getSensorReadings = async (
 ): Promise<any[]> => {
   // Mock sensors: always read from KV (no nft_address)
   if (sensor?.mode === 'mock') {
-    let readings = await kv.getByPrefix(`reading:${sensorId}:`);
+    const allReadings = await kv.getByPrefix(`reading:${sensorId}:`);
+    allReadings.sort((a: any, b: any) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+    const globalTotal = allReadings.length;
+    let readings = allReadings;
     if (options?.since) readings = readings.filter((r: any) => new Date(r.timestamp) >= options.since!);
     if (options?.until) readings = readings.filter((r: any) => new Date(r.timestamp) <= options.until!);
-    readings.sort((a: any, b: any) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
     if (options?.limit) readings = readings.slice(0, options.limit);
-    return readings;
+    // Attach global sequence based on position in the unfiltered DESC list.
+    return readings.map((r: any) => {
+      const fullIdx = allReadings.findIndex((x: any) => x.id === r.id);
+      return { ...r, sequence: globalTotal - fullIdx };
+    });
   }
 
   // ADR-012: unsigned_dev sensors live in the `readings` table (ADR-010 envelopes),
@@ -214,12 +220,26 @@ const getSensorReadings = async (
     if (options?.until) q = q.lte('time', options.until.toISOString());
     if (options?.limit) q = q.limit(options.limit);
 
-    const { data: rows, error } = await q;
+    // Global total (unfiltered) — used to assign a monotonic `sequence` field
+    // so the UI can render the reading's position in the sensor's full history
+    // ("#1234 of 1234"), not just its position within the visible slice.
+    const globalCountQ = supabase
+      .from('readings')
+      .select('id', { count: 'exact', head: true })
+      .eq('device_id', deviceId);
+
+    const [rowsRes, countRes] = await Promise.all([q, globalCountQ]);
+    const { data: rows, error } = rowsRes;
     if (error) {
       console.error('getSensorReadings (unsigned_dev) error:', error.message);
       return [];
     }
-    return Promise.all((rows ?? []).map(r => envelopeRowToKvFormat(r, sensorId)));
+    const globalTotal = countRes.count ?? (rows?.length ?? 0);
+    const mapped = await Promise.all((rows ?? []).map(r => envelopeRowToKvFormat(r, sensorId)));
+    // rows are DESC by time → rows[0] is globally newest → sequence = globalTotal.
+    // This assumes the visible slice is a prefix of the full DESC list (true for
+    // "latest N" and "since=1h-ago" queries — the only shapes the UI emits).
+    return mapped.map((reading, i) => ({ ...reading, sequence: globalTotal - i }));
   }
 
   // Real sensors: resolve nft_address and query PG
@@ -278,7 +298,21 @@ const getSensorReadings = async (
     return pq;
   });
 
-  const pageResults = await Promise.all(pagePromises);
+  // Fetch paginated rows and unfiltered global count in parallel. globalCount
+  // feeds the per-reading `sequence` field used by the UI to render the row's
+  // position in the sensor's full history. Without an active filter,
+  // globalCount === totalAvailable, but when since/until narrows the window
+  // they diverge and we want the global one on each row.
+  const globalCountQ = supabase
+    .from('sensor_readings')
+    .select('id', { count: 'exact', head: true })
+    .eq('nft_address', nftAddress);
+
+  const [pageResults, globalCountRes] = await Promise.all([
+    Promise.all(pagePromises),
+    globalCountQ,
+  ]);
+
   const rows: any[] = [];
   for (const { data, error } of pageResults) {
     if (error) {
@@ -288,9 +322,12 @@ const getSensorReadings = async (
     if (data) rows.push(...data);
   }
 
-  // Map PG rows to KV format
+  // Map PG rows to KV format, attaching global sequence. rows are DESC by time,
+  // so row[0] (newest within the window) maps to sequence = globalTotal.
   const sensorType = sensor?.type || 'temperature';
-  return Promise.all(rows.map(r => pgReadingToKvFormat(r, sensorId, sensorType)));
+  const globalTotal = globalCountRes.count ?? totalAvailable;
+  const mapped = await Promise.all(rows.map(r => pgReadingToKvFormat(r, sensorId, sensorType)));
+  return mapped.map((reading, i) => ({ ...reading, sequence: globalTotal - i }));
 };
 
 // Count readings efficiently via PG (avoids fetching all rows)

@@ -30,6 +30,10 @@ export interface Reading {
   verified: boolean;
   signature?: string;
   hash?: string;
+  // Global monotonic sequence number within this sensor's full history.
+  // 1 = oldest reading ever recorded; incrementing by 1 for each subsequent
+  // row. Computed server-side (see getSensorReadings in the edge function).
+  sequence?: number;
 }
 
 export interface Dataset {

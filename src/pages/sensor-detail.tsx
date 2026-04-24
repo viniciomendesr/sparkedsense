@@ -884,7 +884,7 @@ export function SensorDetailPage({
                     {lastHourReadings.slice(-10).reverse().map((reading, idx) => (
                       <tr key={reading.id} className="border-b border-border/50">
                         <td className="py-3 pl-4 pr-2 text-right text-sm font-mono tabular-nums" style={{ color: 'var(--text-muted)' }}>
-                          {idx + 1}
+                          {reading.sequence ?? idx + 1}
                         </td>
                         <td className="py-3 px-4 text-sm" style={{ color: 'var(--text-primary)' }}>
                           {reading.timestamp.toLocaleString()}
