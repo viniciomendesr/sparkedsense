@@ -353,6 +353,7 @@ export function RegisterSensorDialog({ open, onOpenChange, onRegister }: Registe
                     <SelectItem value="pressure">Pressure</SelectItem>
                     <SelectItem value="light">Light</SelectItem>
                     <SelectItem value="co2">CO2</SelectItem>
+                    <SelectItem value="acoustic">Acoustic (keyword spotting)</SelectItem>
                   </SelectContent>
                 </Select>
               </div>

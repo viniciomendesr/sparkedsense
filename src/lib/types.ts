@@ -1,7 +1,7 @@
 export interface Sensor {
   id: string;
   name: string;
-  type: 'temperature' | 'humidity' | 'ph' | 'pressure' | 'light' | 'co2';
+  type: 'temperature' | 'humidity' | 'ph' | 'pressure' | 'light' | 'co2' | 'acoustic';
   description: string;
   visibility: 'public' | 'private' | 'partial';
   status: 'active' | 'inactive' | 'reconnecting';
