@@ -16,7 +16,8 @@ import {
   Clock,
   Copy,
   Info,
-  MapPin
+  MapPin,
+  ShieldAlert
 } from 'lucide-react';
 import { SensorChart } from '../components/sensor-chart';
 import { publicAPI } from '../lib/api';
@@ -313,6 +314,11 @@ export function PublicSensorDetailPage({
                     {sensor.mode === 'real' ? (
                       <Badge variant="outline" className="bg-accent/20 text-accent border-accent/30">
                         Real Data
+                      </Badge>
+                    ) : sensor.mode === 'unsigned_dev' ? (
+                      <Badge variant="outline" className="bg-warning/20 text-warning border-warning/30">
+                        <ShieldAlert className="w-3 h-3 mr-1" />
+                        Unsigned Dev
                       </Badge>
                     ) : (
                       <Badge variant="outline" className="bg-secondary/20 text-secondary border-secondary/30">
