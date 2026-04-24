@@ -571,11 +571,27 @@ app.post("/server/sensors", async (c) => {
       return c.json({ error: 'Unauthorized' }, 401);
     }
 
-    const { name, type, description, visibility, mode, claimToken, walletPublicKey } = await c.req.json();
+    const { name, type, description, visibility, mode, claimToken, walletPublicKey, devicePublicKey } = await c.req.json();
+
+    const resolvedMode = mode || 'real';
+    const VALID_MODES = ['real', 'mock', 'unsigned_dev'] as const;
+    if (!VALID_MODES.includes(resolvedMode)) {
+      return c.json({ error: `Invalid mode: ${resolvedMode}. Expected one of ${VALID_MODES.join(', ')}` }, 400);
+    }
+
+    // ADR-012: unsigned_dev sensors skip challenge-response and NFT mint.
+    // The caller must have already registered the device via Step 1 of
+    // /server/register-device, so a row in `devices` exists for devicePublicKey.
+    if (resolvedMode === 'unsigned_dev' && !devicePublicKey) {
+      return c.json({ error: 'devicePublicKey is required for unsigned_dev mode' }, 400);
+    }
+
     const id = generateId();
-    
-    // Use provided claim token or generate a new one
-    const finalClaimToken = claimToken || generateId();
+
+    // Real sensors get a claim token to link to their NFT-minted device.
+    // Mock sensors get a generated token for internal consistency.
+    // unsigned_dev sensors have no claim token — no NFT, no on-chain ownership.
+    const finalClaimToken = resolvedMode === 'unsigned_dev' ? null : (claimToken || generateId());
 
     const sensor = {
       id,
@@ -583,26 +599,30 @@ app.post("/server/sensors", async (c) => {
       type,
       description,
       visibility,
-      mode: mode || 'real', // Default to 'real' if not specified
-      status: mode === 'mock' ? 'active' : 'inactive', // Mock sensors are immediately active
+      mode: resolvedMode,
+      status: resolvedMode === 'mock' ? 'active' : 'inactive', // Mock is immediately active; real/unsigned_dev activate on first POST
       owner: user.id,
       claimToken: finalClaimToken,
-      walletPublicKey: walletPublicKey || null, // Store wallet public key if provided
+      walletPublicKey: walletPublicKey || null,
+      devicePublicKey: resolvedMode === 'unsigned_dev' ? devicePublicKey : (devicePublicKey || null),
       thumbnailUrl: null,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
 
     await kv.set(`sensor:${user.id}:${id}`, sensor);
-    
-    // If mock mode, initialize with some mock readings
-    if (mode === 'mock') {
+
+    if (resolvedMode === 'mock') {
       console.log(`Initializing mock sensor ${id} with sample readings`);
-      // We'll generate readings via a separate background process
     }
-    
-    console.log(`Created sensor ${id} (mode: ${mode}, wallet: ${walletPublicKey ? 'linked' : 'none'})`);
-    
+
+    if (resolvedMode === 'unsigned_dev') {
+      // ADR-011/ADR-012 audit trail: explains why this sensor lacks NFT/claim_token.
+      console.warn(`🔓 Created sensor ${id} in unsigned_dev mode (ADR-012) — device ${devicePublicKey.substring(0, 16)}... publishes real data with signature bypass per ADR-011. No NFT minted.`);
+    } else {
+      console.log(`Created sensor ${id} (mode: ${resolvedMode}, wallet: ${walletPublicKey ? 'linked' : 'none'})`);
+    }
+
     return c.json({ sensor });
   } catch (error) {
     console.error('Failed to create sensor:', error);
@@ -2239,7 +2259,16 @@ app.post("/server/reading", async (c) => {
 
     try {
       const allSensors = await kv.getByPrefix('sensor:');
-      const linkedSensor = allSensors.find((s: any) => s.id === device.id || s.claimToken === device.claim_token);
+      // Match order:
+      //  - s.id === device.id: legacy KV mirror (kept for older rows)
+      //  - claimToken: real/mock sensors linked via claim_token (both sides must be non-null to avoid
+      //    false matches when multiple sensors/devices have claim_token = null, e.g. unsigned_dev)
+      //  - devicePublicKey: ADR-012 unsigned_dev sensors, which never receive a claim_token
+      const linkedSensor = allSensors.find((s: any) =>
+        s.id === device.id ||
+        (s.claimToken && device.claim_token && s.claimToken === device.claim_token) ||
+        (s.devicePublicKey && s.devicePublicKey === device.public_key)
+      );
       if (linkedSensor) {
         linkedSensor.status = 'active';
         linkedSensor.updatedAt = new Date().toISOString();
