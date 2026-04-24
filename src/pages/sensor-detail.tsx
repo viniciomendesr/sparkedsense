@@ -881,7 +881,7 @@ export function SensorDetailPage({
                     </tr>
                   </thead>
                   <tbody>
-                    {lastHourReadings.slice(-10).reverse().map((reading, idx) => (
+                    {lastHourReadings.slice(0, 10).reverse().map((reading, idx) => (
                       <tr key={reading.id} className="border-b border-border/50">
                         <td className="py-3 pl-4 pr-2 text-right text-sm font-mono tabular-nums" style={{ color: 'var(--text-muted)' }}>
                           {idx + 1}
