@@ -756,10 +756,21 @@ const buildLocationText = (
   return address?.displayName || `${latitude.toFixed(4)}, ${longitude.toFixed(4)}`;
 };
 
-// Fields a user may change via PUT /sensors/:id.
+// Fields a user may change via PUT /sensors/:id for `real` sensors.
 // location/latitude/longitude/locationAccuracy come from the device firmware and
 // must never be mutable by the user — changing them would break the DePIN trust model.
 const USER_EDITABLE_SENSOR_FIELDS = ['name', 'description', 'visibility'] as const;
+
+// ADR-012: unsigned_dev devices don't ship geolocation yet (firmware is still
+// being ported). Until that lands, the user manually sets the sensor's location
+// so the card/audit surface isn't blank. Once the firmware starts publishing
+// signed geolocation, this editability should go away on upgrade to `real`.
+const UNSIGNED_DEV_EXTRA_EDITABLE_FIELDS = [
+  'location',
+  'latitude',
+  'longitude',
+  'locationAccuracy',
+] as const;
 
 app.put("/server/sensors/:id", async (c) => {
   try {
@@ -771,18 +782,24 @@ app.put("/server/sensors/:id", async (c) => {
     const id = c.req.param('id');
     const body = await c.req.json();
 
-    const updates: Record<string, unknown> = {};
-    for (const key of USER_EDITABLE_SENSOR_FIELDS) {
-      if (key in body) updates[key] = body[key];
-    }
+    const existingForMode = await kv.get(`sensor:${user.id}:${id}`);
+    const isUnsignedDev = existingForMode?.mode === 'unsigned_dev';
 
-    const existing = await kv.get(`sensor:${user.id}:${id}`);
-    if (!existing) {
+    const editable: readonly string[] = isUnsignedDev
+      ? [...USER_EDITABLE_SENSOR_FIELDS, ...UNSIGNED_DEV_EXTRA_EDITABLE_FIELDS]
+      : USER_EDITABLE_SENSOR_FIELDS;
+
+    if (!existingForMode) {
       return c.json({ error: 'Sensor not found' }, 404);
     }
 
+    const updates: Record<string, unknown> = {};
+    for (const key of editable) {
+      if (key in body) updates[key] = body[key];
+    }
+
     const sensor = {
-      ...existing,
+      ...existingForMode,
       ...updates,
       updatedAt: new Date().toISOString(),
     };

@@ -237,11 +237,53 @@ export function SensorDetailPage({
       }
     };
 
-    // Poll immediately, then every 15 seconds
+    // Poll immediately, then every 3 seconds. The backend already rate-limits
+    // incoming events to 5s, so 3s gives ≤3s lag without hammering the API.
+    // Realtime subscription below still beats the interval for instant updates;
+    // the poll is kept as a safety net.
     pollReadings();
-    const interval = setInterval(pollReadings, 15000);
+    const interval = setInterval(pollReadings, 3000);
     return () => clearInterval(interval);
   }, [isStreaming, sensor.id, sensor.mode, accessToken]);
+
+  // Realtime subscription on the `readings` table — fires the instant the
+  // /server/reading handler inserts a new envelope for this device. Scopes the
+  // filter to `source = spark:device:<pubkey>` so we don't wake up on other
+  // devices' traffic. Only attaches when the sensor has a bound device pubkey
+  // (unsigned_dev always does; real sensors after claim also do).
+  useEffect(() => {
+    if (!user || sensor.mode === 'mock' || !accessToken) return;
+    if (!sensor.devicePublicKey) return;
+
+    const channel = supabase
+      .channel(`readings-${sensor.id}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'readings',
+          filter: `source=eq.spark:device:${sensor.devicePublicKey}`,
+        },
+        async () => {
+          try {
+            const readingsData = await readingAPI.list(sensor.id, accessToken, 100);
+            const parsedReadings = readingsData.map(r => ({
+              ...r,
+              timestamp: new Date(r.timestamp),
+            }));
+            if (parsedReadings.length > 0) setReadings(parsedReadings);
+          } catch (err) {
+            console.error('Realtime readings refetch failed:', err);
+          }
+        },
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [user, sensor.id, sensor.mode, sensor.devicePublicKey, accessToken]);
 
   // Real-time subscription for dataset updates
   useEffect(() => {

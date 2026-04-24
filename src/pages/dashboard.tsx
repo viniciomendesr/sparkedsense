@@ -103,7 +103,7 @@ export function DashboardPage({ onViewSensor }: DashboardPageProps) {
     };
   }, [user, accessToken]);
 
-  // Poll sensors + stats every 30 seconds (fallback if Supabase Realtime misses updates)
+  // Poll sensors + stats every 10 seconds (fallback if Supabase Realtime misses updates)
   useEffect(() => {
     if (!accessToken) return;
 
@@ -128,7 +128,7 @@ export function DashboardPage({ onViewSensor }: DashboardPageProps) {
       }
     };
 
-    const interval = setInterval(pollDashboard, 30000);
+    const interval = setInterval(pollDashboard, 10000);
     return () => clearInterval(interval);
   }, [accessToken]);
 
@@ -197,9 +197,10 @@ export function DashboardPage({ onViewSensor }: DashboardPageProps) {
               console.error('Failed to poll real sensor data:', error);
             }
           };
-          // Poll immediately, then every 15 seconds
+          // Poll immediately, then every 3 seconds for snappy card sparklines.
+          // Backend rate-limits ingestion at 5s so this can't out-pace events.
           pollRealData();
-          const interval = setInterval(pollRealData, 15000);
+          const interval = setInterval(pollRealData, 3000);
           intervals.push(interval);
         }
       }
