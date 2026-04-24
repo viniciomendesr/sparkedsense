@@ -2186,10 +2186,12 @@ app.post("/server/reading", async (c) => {
       return c.json({ error: 'Device revoked', code: 'device_revoked' }, 403);
     }
 
-    // Rate limit: 55s minimum between readings (same as legacy path)
+    // Rate limit: temporariamente relaxado de 55s pra 5s durante demo Claro 2026-04-24
+    // (permite múltiplas publicações "claro" por minuto na apresentação ao vivo).
+    // TODO: voltar pra 55 após a demo.
     const eventTimeSec = Math.floor(new Date(envelope.time).getTime() / 1000);
     const nowSec = Math.floor(Date.now() / 1000);
-    if (device.last_ts_seen && (nowSec - Number(device.last_ts_seen)) < 55) {
+    if (device.last_ts_seen && (nowSec - Number(device.last_ts_seen)) < 5) {
       return c.json({ error: 'Rate limited — wait before sending another reading', code: 'rate_limited' }, 429);
     }
 
