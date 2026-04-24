@@ -2319,12 +2319,14 @@ app.post("/server/reading", async (c) => {
       return c.json({ error: 'Device revoked', code: 'device_revoked' }, 403);
     }
 
-    // Rate limit: temporariamente relaxado de 55s pra 5s durante demo Claro 2026-04-24
-    // (permite múltiplas publicações "claro" por minuto na apresentação ao vivo).
-    // TODO: voltar pra 55 após a demo.
+    // Rate limit: relaxado pra 1s durante demo Claro 2026-04-24 (originalmente
+    // 55s; passou por 5s durante os primeiros testes). 1s ainda bloqueia flood
+    // de um device comprometido mas deixa o Nó 2 publicar múltiplos "claro" em
+    // sequência. Usamos millisegundos pra ter resolução sub-segundo.
+    // TODO: voltar pra 55s após a demo.
     const eventTimeSec = Math.floor(new Date(envelope.time).getTime() / 1000);
-    const nowSec = Math.floor(Date.now() / 1000);
-    if (device.last_ts_seen && (nowSec - Number(device.last_ts_seen)) < 5) {
+    const nowMs = Date.now();
+    if (device.last_ts_seen && (nowMs - Number(device.last_ts_seen) * 1000) < 1000) {
       return c.json({ error: 'Rate limited — wait before sending another reading', code: 'rate_limited' }, 429);
     }
 
