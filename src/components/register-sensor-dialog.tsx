@@ -292,7 +292,7 @@ export function RegisterSensorDialog({ open, onOpenChange, onRegister }: Registe
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
-      <DialogContent className="bg-card border-border max-w-2xl">
+      <DialogContent className="bg-card border-border max-w-3xl max-h-[90vh] overflow-y-auto">
         {step === 'mode' ? (
           <>
             <DialogHeader>
@@ -844,75 +844,84 @@ export function RegisterSensorDialog({ open, onOpenChange, onRegister }: Registe
               </DialogDescription>
             </DialogHeader>
 
-            <div className="mt-6 space-y-6">
-              {mode !== 'unsigned_dev' && (
-                <div className="p-4 rounded-lg bg-muted/50 border border-border">
-                  <Label className="mb-2 block">Claim Token</Label>
-                  <div className="flex items-center gap-2">
-                    <code className="flex-1 font-mono p-3 rounded bg-background border border-border text-sm break-all" style={{ color: 'var(--text-primary)' }}>
-                      {claimToken}
-                    </code>
-                    <Button
-                      size="icon"
-                      variant="outline"
-                      onClick={handleCopy}
-                      className="shrink-0 border-border"
-                    >
-                      {copied ? <Check className="w-4 h-4 text-success" /> : <Copy className="w-4 h-4" />}
-                    </Button>
-                  </div>
-                </div>
-              )}
-
-              {mode === 'unsigned_dev' && devicePublicKey && (
-                <div className="p-4 rounded-lg bg-muted/50 border border-border">
-                  <Label className="mb-2 block">Device Public Key</Label>
-                  <div className="flex items-center gap-2">
-                    <ShieldAlert className="w-4 h-4 text-warning shrink-0" />
-                    <code className="flex-1 font-mono text-xs break-all" style={{ color: 'var(--text-primary)' }}>
-                      {devicePublicKey}
-                    </code>
-                  </div>
-                </div>
-              )}
-
-              {mode === 'real' && walletPublicKey && (
-                <div className="p-4 rounded-lg bg-muted/50 border border-border">
-                  <Label className="mb-2 block">Linked Wallet</Label>
-                  <div className="flex items-center gap-2">
-                    <Wallet className="w-4 h-4 text-primary shrink-0" />
-                    <code className="flex-1 font-mono text-sm break-all" style={{ color: 'var(--text-primary)' }}>
-                      {walletPublicKey}
-                    </code>
-                  </div>
-                </div>
-              )}
-
+            <div className="mt-6 space-y-4">
+              {/* Top row: identity artifact (claim token / device pubkey / wallet) + status badge */}
               <div
-                className={`p-4 rounded-lg border ${
-                  mode === 'unsigned_dev'
-                    ? 'bg-warning/10 border-warning/30'
-                    : 'bg-success/10 border-success/30'
-                }`}
+                className={
+                  mode === 'unsigned_dev' || mode === 'real'
+                    ? 'grid grid-cols-1 md:grid-cols-2 gap-4'
+                    : 'space-y-4'
+                }
               >
-                <h4
-                  className="mb-2"
-                  style={{
-                    fontWeight: 600,
-                    color: mode === 'unsigned_dev' ? 'var(--warning)' : 'var(--success)',
-                  }}
+                {mode !== 'unsigned_dev' && (
+                  <div className="p-4 rounded-lg bg-muted/50 border border-border">
+                    <Label className="mb-2 block">Claim Token</Label>
+                    <div className="flex items-center gap-2">
+                      <code className="flex-1 font-mono p-2 rounded bg-background border border-border text-xs break-all" style={{ color: 'var(--text-primary)' }}>
+                        {claimToken}
+                      </code>
+                      <Button
+                        size="icon"
+                        variant="outline"
+                        onClick={handleCopy}
+                        className="shrink-0 border-border"
+                      >
+                        {copied ? <Check className="w-4 h-4 text-success" /> : <Copy className="w-4 h-4" />}
+                      </Button>
+                    </div>
+                  </div>
+                )}
+
+                {mode === 'unsigned_dev' && devicePublicKey && (
+                  <div className="p-4 rounded-lg bg-muted/50 border border-border">
+                    <Label className="mb-2 block">Device Public Key</Label>
+                    <div className="flex items-start gap-2">
+                      <ShieldAlert className="w-4 h-4 text-warning shrink-0 mt-0.5" />
+                      <code className="flex-1 font-mono text-xs break-all leading-relaxed" style={{ color: 'var(--text-primary)' }}>
+                        {devicePublicKey}
+                      </code>
+                    </div>
+                  </div>
+                )}
+
+                {mode === 'real' && walletPublicKey && (
+                  <div className="p-4 rounded-lg bg-muted/50 border border-border">
+                    <Label className="mb-2 block">Linked Wallet</Label>
+                    <div className="flex items-center gap-2">
+                      <Wallet className="w-4 h-4 text-primary shrink-0" />
+                      <code className="flex-1 font-mono text-xs break-all" style={{ color: 'var(--text-primary)' }}>
+                        {walletPublicKey}
+                      </code>
+                    </div>
+                  </div>
+                )}
+
+                <div
+                  className={`p-4 rounded-lg border ${
+                    mode === 'unsigned_dev'
+                      ? 'bg-warning/10 border-warning/30'
+                      : 'bg-success/10 border-success/30'
+                  }`}
                 >
-                  {mode === 'unsigned_dev'
-                    ? '⚠ Signature Bypass Active'
-                    : `✓ ${mode === 'real' ? 'Blockchain Link Complete' : 'Registration Complete'}`}
-                </h4>
-                <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
-                  {mode === 'real'
-                    ? 'Your sensor is now linked to your Solana wallet. The NFT will be minted when the device sends its first verified reading.'
-                    : mode === 'unsigned_dev'
-                      ? 'Readings arriving with the unsigned_dev marker will be accepted and persisted, but are not eligible for on-chain anchoring until the firmware signing pipeline is ported.'
-                      : 'Your mock sensor is ready to generate test data automatically.'}
-                </p>
+                  <h4
+                    className="mb-2 text-sm"
+                    style={{
+                      fontWeight: 600,
+                      color: mode === 'unsigned_dev' ? 'var(--warning)' : 'var(--success)',
+                    }}
+                  >
+                    {mode === 'unsigned_dev'
+                      ? '⚠ Signature Bypass Active'
+                      : `✓ ${mode === 'real' ? 'Blockchain Link Complete' : 'Registration Complete'}`}
+                  </h4>
+                  <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
+                    {mode === 'real'
+                      ? 'Sensor linked to your Solana wallet. The NFT will be minted on first verified reading.'
+                      : mode === 'unsigned_dev'
+                        ? 'Readings with the unsigned_dev marker are accepted and persisted, but are not eligible for on-chain anchoring until firmware signing is ported.'
+                        : 'Your mock sensor is ready to generate test data automatically.'}
+                  </p>
+                </div>
               </div>
 
               <div className="p-4 rounded-lg bg-info/10 border border-info/30">
