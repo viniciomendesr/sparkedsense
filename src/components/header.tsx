@@ -8,6 +8,7 @@ import { Input } from './ui/input';
 import { Label } from './ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
 import { toast } from 'sonner@2.0.3';
+import { ThemeToggle } from './theme-toggle';
 
 export function Header() {
   const navigate = useNavigate();
@@ -84,6 +85,7 @@ export function Header() {
 
             {/* Auth */}
             <div className="flex items-center gap-4">
+              <ThemeToggle />
               {user ? (
                 <div className="flex items-center gap-3">
                   <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-lg bg-muted">

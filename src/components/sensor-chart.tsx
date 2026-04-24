@@ -45,7 +45,7 @@ const CustomTooltip = ({ active, payload, unit }: any) => {
       background: 'var(--card)',
       border: '1px solid var(--border)',
       color: 'var(--text-primary)',
-      boxShadow: '0 8px 16px rgba(0,0,0,0.4)',
+      boxShadow: '0 8px 16px var(--shadow-strong)',
     }}>
       <div style={{ color: 'var(--text-muted)' }}>{p.fullTime}</div>
       <div style={{ fontWeight: 600, fontSize: 14 }}>{formatValue(p.value, unit)}</div>

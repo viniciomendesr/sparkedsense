@@ -9,6 +9,18 @@
 
     <body>
       <div id="root"></div>
+      <script>
+        (function () {
+          try {
+            var t = localStorage.getItem('sparked-sense-theme');
+            if (t === 'light' || t === 'dark') {
+              document.documentElement.classList.add(t);
+            } else {
+              document.documentElement.classList.add('dark');
+            }
+          } catch (e) {}
+        })();
+      </script>
       <script type="module" src="/src/main.tsx"></script>
     </body>
   </html>

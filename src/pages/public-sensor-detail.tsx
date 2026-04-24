@@ -206,7 +206,7 @@ export function PublicSensorDetailPage({
 
   const statusColors = {
     active: 'bg-success',
-    inactive: 'bg-[#4A4F59]',
+    inactive: 'bg-[var(--text-disabled)]',
     reconnecting: 'bg-warning',
   };
 
@@ -411,7 +411,7 @@ export function PublicSensorDetailPage({
           <Card className="p-4 bg-card border-border mb-4">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
-                <div className={`w-3 h-3 rounded-full ${isStreaming ? 'bg-success animate-pulse' : 'bg-[#4A4F59]'}`}></div>
+                <div className={`w-3 h-3 rounded-full ${isStreaming ? 'bg-success animate-pulse' : 'bg-[var(--text-disabled)]'}`}></div>
                 <span style={{ fontWeight: 500, color: 'var(--text-primary)' }}>
                   {isStreaming ? 'Streaming Live Data' : 'Stream Paused'}
                 </span>

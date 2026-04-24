@@ -5,12 +5,24 @@
       <meta charset="UTF-8" />
       <meta name="viewport" content="width=device-width, initial-scale=1.0" />
       <title>Sparked Sense MVP v1</title>
-      <script type="module" crossorigin src="/assets/index-DauxxREe.js"></script>
-      <link rel="stylesheet" crossorigin href="/assets/index-BoPwVejQ.css">
+      <script type="module" crossorigin src="/assets/index-BgZxwYR_.js"></script>
+      <link rel="stylesheet" crossorigin href="/assets/index-Ctvp58Pq.css">
     </head>
 
     <body>
       <div id="root"></div>
+      <script>
+        (function () {
+          try {
+            var t = localStorage.getItem('sparked-sense-theme');
+            if (t === 'light' || t === 'dark') {
+              document.documentElement.classList.add(t);
+            } else {
+              document.documentElement.classList.add('dark');
+            }
+          } catch (e) {}
+        })();
+      </script>
     </body>
   </html>
   

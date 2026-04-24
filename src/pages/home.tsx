@@ -129,8 +129,8 @@ export function HomePage({ onGetStarted }: HomePageProps) {
           animation: featured-glow 4s ease-in-out infinite;
         }
         @keyframes featured-glow {
-          0%, 100% { box-shadow: 0 0 0px 0px rgba(99, 210, 130, 0); }
-          50% { box-shadow: 0 0 12px 1px rgba(99, 210, 130, 0.15); }
+          0%, 100% { box-shadow: 0 0 0px 0px transparent; }
+          50% { box-shadow: 0 0 12px 1px var(--pulse-accent); }
         }
       `}</style>
       {/* Hero Section */}
@@ -284,7 +284,7 @@ export function HomePage({ onGetStarted }: HomePageProps) {
                             <Badge variant="outline" className="border-border">
                               <div className="flex items-center gap-1.5">
                                 <div className={`w-2 h-2 rounded-full ${
-                                  sensor.status === 'active' ? 'bg-success animate-pulse' : 'bg-[#4A4F59]'
+                                  sensor.status === 'active' ? 'bg-success animate-pulse' : 'bg-[var(--text-disabled)]'
                                 }`}></div>
                                 {sensor.status === 'active' ? 'Active' : 'Inactive'}
                               </div>
