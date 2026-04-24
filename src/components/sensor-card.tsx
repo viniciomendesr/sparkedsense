@@ -2,7 +2,7 @@ import { Sensor } from '../lib/types';
 import { Card } from './ui/card';
 import { Badge } from './ui/badge';
 import { Button } from './ui/button';
-import { Activity, Eye, EyeOff, Lock, AlertCircle, Calendar, Clock, Hexagon, MapPin, Database, Hash } from 'lucide-react';
+import { Activity, Eye, EyeOff, Lock, AlertCircle, Calendar, Clock, Hexagon, MapPin, Database, Hash, ShieldAlert } from 'lucide-react';
 import { ImageWithFallback } from './figma/ImageWithFallback';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from './ui/tooltip';
 import { formatDataSize } from '../lib/format';
@@ -122,28 +122,48 @@ export function SensorCard({ sensor, liveData, onViewDetails, showMiniSparkline 
             <Badge variant="outline" className="bg-accent/20 text-accent border-accent/30">
               Real Data
             </Badge>
+          ) : sensor.mode === 'unsigned_dev' ? (
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <div>
+                    <Badge variant="outline" className="bg-warning/20 text-warning border-warning/30 cursor-help">
+                      <ShieldAlert className="w-3 h-3 mr-1" />
+                      Unsigned Dev
+                    </Badge>
+                  </div>
+                </TooltipTrigger>
+                <TooltipContent side="top" className="max-w-xs">
+                  <p className="text-sm">
+                    Real physical device publishing real readings under the ADR-011 signature bypass. The firmware signing pipeline has not been ported yet, so events carry the <code>unsigned_dev</code> marker and are not eligible for on-chain anchoring.
+                  </p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
           ) : (
             <Badge variant="outline" className="bg-secondary/20 text-secondary border-secondary/30">
               Mock Data
             </Badge>
           )}
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <div>
-                  <Badge variant="outline" className="bg-secondary/20 text-secondary border-secondary/30 cursor-help">
-                    <Hexagon className="w-3 h-3 mr-1" />
-                    NFT Sensor
-                  </Badge>
-                </div>
-              </TooltipTrigger>
-              <TooltipContent side="top" className="max-w-xs">
-                <p className="text-sm">
-                  This sensor is registered as an NFT on the Solana blockchain, ensuring verifiable ownership and provenance.
-                </p>
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
+          {sensor.mode !== 'unsigned_dev' && (
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <div>
+                    <Badge variant="outline" className="bg-secondary/20 text-secondary border-secondary/30 cursor-help">
+                      <Hexagon className="w-3 h-3 mr-1" />
+                      NFT Sensor
+                    </Badge>
+                  </div>
+                </TooltipTrigger>
+                <TooltipContent side="top" className="max-w-xs">
+                  <p className="text-sm">
+                    This sensor is registered as an NFT on the Solana blockchain, ensuring verifiable ownership and provenance.
+                  </p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          )}
         </div>
 
         {/* Dates */}

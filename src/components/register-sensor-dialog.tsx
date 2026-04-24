@@ -6,7 +6,7 @@ import { Label } from './ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import { Textarea } from './ui/textarea';
 import { RadioGroup, RadioGroupItem } from './ui/radio-group';
-import { Copy, Check, Database, TestTube2, Loader2, Wallet, AlertCircle } from 'lucide-react';
+import { Copy, Check, Database, TestTube2, Loader2, Wallet, AlertCircle, ShieldAlert } from 'lucide-react';
 import { Sensor } from '../lib/types';
 import { Card } from './ui/card';
 import { sensorAPI } from '../lib/api';
@@ -20,7 +20,7 @@ interface RegisterSensorDialogProps {
 
 export function RegisterSensorDialog({ open, onOpenChange, onRegister }: RegisterSensorDialogProps) {
   const { accessToken } = useAuth();
-  const [step, setStep] = useState<'mode' | 'form' | 'wallet' | 'token'>('mode');
+  const [step, setStep] = useState<'mode' | 'form' | 'wallet' | 'unsigned-device' | 'token'>('mode');
   const [mode, setMode] = useState<Sensor['mode']>('real');
   const [name, setName] = useState('');
   const [type, setType] = useState<Sensor['type']>('temperature');
@@ -34,6 +34,8 @@ export function RegisterSensorDialog({ open, onOpenChange, onRegister }: Registe
   const [pastedToken, setPastedToken] = useState('');
   const [copied, setCopied] = useState(false);
   const [isRetrievingToken, setIsRetrievingToken] = useState(false);
+  const [isRegisteringUnsignedDevice, setIsRegisteringUnsignedDevice] = useState(false);
+  const [unsignedDeviceError, setUnsignedDeviceError] = useState('');
   const [retrievalError, setRetrievalError] = useState('');
   const [retrievalSuccess, setRetrievalSuccess] = useState(false);
   const [walletError, setWalletError] = useState('');
@@ -53,7 +55,7 @@ export function RegisterSensorDialog({ open, onOpenChange, onRegister }: Registe
     if (mode === 'mock') {
       const token = `CLAIM_${Math.random().toString(36).substring(2, 15).toUpperCase()}`;
       setClaimToken(token);
-      
+
       onRegister({
         name,
         type,
@@ -62,11 +64,46 @@ export function RegisterSensorDialog({ open, onOpenChange, onRegister }: Registe
         mode,
         claimToken: token,
       });
-      
+
       setStep('token');
+    } else if (mode === 'unsigned_dev') {
+      // ADR-012: physical device with pending signing pipeline. Skip wallet/NFT,
+      // go to the MAC + device pubkey form which calls register-device Step 1.
+      setStep('unsigned-device');
     } else {
       // For real sensors, proceed to wallet step
       setStep('wallet');
+    }
+  };
+
+  // ADR-012: unsigned_dev registration — register the device row via Step 1 of
+  // /server/register-device, then create the sensor linked by devicePublicKey.
+  const handleUnsignedDeviceSubmit = async () => {
+    if (!macAddress || !devicePublicKey || macError || deviceKeyError) return;
+
+    setIsRegisteringUnsignedDevice(true);
+    setUnsignedDeviceError('');
+
+    try {
+      await sensorAPI.registerDeviceStep1(macAddress, devicePublicKey);
+
+      onRegister({
+        name,
+        type,
+        description,
+        visibility,
+        mode: 'unsigned_dev',
+        devicePublicKey,
+      });
+
+      setStep('token');
+    } catch (error: any) {
+      console.error('Failed to register unsigned_dev sensor:', error);
+      setUnsignedDeviceError(
+        error?.message || 'Unable to register device. Check MAC/public key and try again.',
+      );
+    } finally {
+      setIsRegisteringUnsignedDevice(false);
     }
   };
 
@@ -83,8 +120,11 @@ export function RegisterSensorDialog({ open, onOpenChange, onRegister }: Registe
   };
 
   const validateDevicePublicKey = (key: string): boolean => {
-    // Device public keys are base58 encoded and typically 32-44 characters
+    // Real-data flow uses base58 (Solana-style) device keys.
+    // ADR-012 unsigned_dev flow uses raw hex pubkeys (secp256k1, 64 or 66+ hex chars).
     const base58Regex = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
+    const hexRegex = /^[0-9a-fA-F]{64,130}$/;
+    if (mode === 'unsigned_dev') return hexRegex.test(key);
     return base58Regex.test(key);
   };
 
@@ -245,6 +285,8 @@ export function RegisterSensorDialog({ open, onOpenChange, onRegister }: Registe
     setRetrievalSuccess(false);
     setCopied(false);
     setIsRetrievingToken(false);
+    setIsRegisteringUnsignedDevice(false);
+    setUnsignedDeviceError('');
     onOpenChange(false);
   };
 
@@ -261,8 +303,8 @@ export function RegisterSensorDialog({ open, onOpenChange, onRegister }: Registe
             </DialogHeader>
             
             <div className="space-y-4 mt-6">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <Card 
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <Card
                   className="p-6 cursor-pointer border-2 hover:border-primary/50 transition-all duration-200"
                   onClick={() => handleModeSelect('real')}
                 >
@@ -281,7 +323,7 @@ export function RegisterSensorDialog({ open, onOpenChange, onRegister }: Registe
                   </div>
                 </Card>
 
-                <Card 
+                <Card
                   className="p-6 cursor-pointer border-2 hover:border-secondary/50 transition-all duration-200"
                   onClick={() => handleModeSelect('mock')}
                 >
@@ -299,11 +341,30 @@ export function RegisterSensorDialog({ open, onOpenChange, onRegister }: Registe
                     </div>
                   </div>
                 </Card>
+
+                <Card
+                  className="p-6 cursor-pointer border-2 hover:border-warning/50 transition-all duration-200"
+                  onClick={() => handleModeSelect('unsigned_dev')}
+                >
+                  <div className="flex flex-col items-center text-center space-y-3">
+                    <div className="w-12 h-12 rounded-lg bg-warning/10 flex items-center justify-center">
+                      <ShieldAlert className="w-6 h-6 text-warning" />
+                    </div>
+                    <div>
+                      <h3 className="mb-2" style={{ fontWeight: 600, color: 'var(--text-primary)' }}>
+                        Unsigned Physical Sensor
+                      </h3>
+                      <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
+                        Real physical device publishing real data, but whose signing pipeline is still being ported. No NFT until signing lands.
+                      </p>
+                    </div>
+                  </div>
+                </Card>
               </div>
 
               <div className="p-4 rounded-lg bg-info/10 border border-info/30">
                 <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
-                  💡 Mock sensors automatically generate random readings for testing and visualization. Perfect for demos and development.
+                  💡 Mock sensors automatically generate random readings for testing and visualization. Unsigned Physical Sensors accept real readings under the ADR-011 signature bypass — the badge makes the attestation gap explicit.
                 </p>
               </div>
 
@@ -652,7 +713,7 @@ export function RegisterSensorDialog({ open, onOpenChange, onRegister }: Registe
               >
                 Back
               </Button>
-              <Button 
+              <Button
                 type="button"
                 onClick={handleWalletSubmit}
                 disabled={!claimToken || !walletPublicKey || !!walletError}
@@ -662,36 +723,158 @@ export function RegisterSensorDialog({ open, onOpenChange, onRegister }: Registe
               </Button>
             </div>
           </>
+        ) : step === 'unsigned-device' ? (
+          <>
+            <DialogHeader>
+              <DialogTitle style={{ color: 'var(--text-primary)' }}>Register Unsigned Physical Sensor</DialogTitle>
+              <DialogDescription style={{ color: 'var(--text-secondary)' }}>
+                Provide the device MAC address and public key. We register the device identity so incoming readings under the <code>unsigned_dev</code> signature marker are routed to this sensor. No NFT is minted — the sensor operates under the ADR-011 bypass until the signing pipeline is ported.
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="space-y-4 mt-4">
+              <div className="space-y-2">
+                <Label htmlFor="unsigned-device-key">Device Public Key (hex)</Label>
+                <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
+                  secp256k1 public key the firmware declares in the envelope <code>source</code>. 64 hex chars (compressed) or 130 hex chars (uncompressed with <code>04</code> prefix).
+                </p>
+                <Input
+                  id="unsigned-device-key"
+                  value={devicePublicKey}
+                  onChange={(e) => handleDevicePublicKeyChange(e.target.value)}
+                  placeholder="e.g., 021d5e4c3a5b8f2e7d9c4a6b1f3e8d0c5a7b2f9e4d1c8a3b6e5f0d7c2a9b4e1f0d"
+                  className={`bg-input border-border font-mono text-xs ${deviceKeyError ? 'border-error' : ''}`}
+                />
+                {deviceKeyError && (
+                  <p className="text-sm" style={{ color: 'var(--error)' }}>
+                    Invalid hex public key. Expected 64 or 130 hex chars.
+                  </p>
+                )}
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="unsigned-mac">Device MAC Address</Label>
+                <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
+                  MAC address of the physical device (ESP32, ESP8266, etc.). Stored alongside the public key for identification.
+                </p>
+                <Input
+                  id="unsigned-mac"
+                  value={macAddress}
+                  onChange={(e) => handleMacAddressChange(e.target.value)}
+                  placeholder="AA:BB:CC:DD:EE:FF"
+                  className={`bg-input border-border ${macError ? 'border-error' : ''}`}
+                />
+                {macError && (
+                  <p className="text-sm" style={{ color: 'var(--error)' }}>
+                    Invalid MAC address. Use format AA:BB:CC:DD:EE:FF.
+                  </p>
+                )}
+              </div>
+
+              <div className="p-4 rounded-lg bg-warning/10 border border-warning/30">
+                <div className="flex items-start gap-2">
+                  <ShieldAlert className="w-4 h-4 text-warning shrink-0 mt-0.5" />
+                  <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
+                    This sensor will not be minted as an NFT. Readings will be accepted with the literal <code>unsigned_dev</code> signature marker per ADR-011. When firmware signing lands, the sensor can be upgraded to <code>real</code> without changing the device public key.
+                  </p>
+                </div>
+              </div>
+
+              {unsignedDeviceError && (
+                <div className="p-3 rounded-lg bg-error/10 border border-error/30">
+                  <div className="flex items-center gap-2">
+                    <AlertCircle className="w-4 h-4 text-error shrink-0" />
+                    <p className="text-sm" style={{ color: 'var(--error)' }}>
+                      {unsignedDeviceError}
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              <div className="flex gap-3 pt-4 border-t border-border mt-4">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setStep('form')}
+                  className="flex-1 border-border"
+                  disabled={isRegisteringUnsignedDevice}
+                >
+                  Back
+                </Button>
+                <Button
+                  type="button"
+                  onClick={handleUnsignedDeviceSubmit}
+                  disabled={
+                    isRegisteringUnsignedDevice ||
+                    !macAddress ||
+                    !devicePublicKey ||
+                    !!macError ||
+                    !!deviceKeyError
+                  }
+                  className="flex-1 bg-warning text-warning-foreground"
+                >
+                  {isRegisteringUnsignedDevice ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      Registering device…
+                    </>
+                  ) : (
+                    'Register Sensor'
+                  )}
+                </Button>
+              </div>
+            </div>
+          </>
         ) : (
           <>
             <DialogHeader>
               <DialogTitle style={{ color: 'var(--text-primary)' }}>
-                {mode === 'real' ? 'Sensor Successfully Linked!' : 'Sensor Registered Successfully!'}
+                {mode === 'real'
+                  ? 'Sensor Successfully Linked!'
+                  : mode === 'unsigned_dev'
+                    ? 'Unsigned Sensor Registered'
+                    : 'Sensor Registered Successfully!'}
               </DialogTitle>
               <DialogDescription style={{ color: 'var(--text-secondary)' }}>
-                {mode === 'real' 
+                {mode === 'real'
                   ? 'Sensor successfully registered and linked to blockchain.'
-                  : 'Your sensor has been minted as an NFT. Use the claim token below to authenticate your device firmware.'}
+                  : mode === 'unsigned_dev'
+                    ? 'Your sensor is registered under the ADR-011 signature bypass. Readings will be accepted from the device public key you provided — no claim token, no NFT.'
+                    : 'Your sensor has been minted as an NFT. Use the claim token below to authenticate your device firmware.'}
               </DialogDescription>
             </DialogHeader>
 
             <div className="mt-6 space-y-6">
-              <div className="p-4 rounded-lg bg-muted/50 border border-border">
-                <Label className="mb-2 block">Claim Token</Label>
-                <div className="flex items-center gap-2">
-                  <code className="flex-1 font-mono p-3 rounded bg-background border border-border text-sm break-all" style={{ color: 'var(--text-primary)' }}>
-                    {claimToken}
-                  </code>
-                  <Button
-                    size="icon"
-                    variant="outline"
-                    onClick={handleCopy}
-                    className="shrink-0 border-border"
-                  >
-                    {copied ? <Check className="w-4 h-4 text-success" /> : <Copy className="w-4 h-4" />}
-                  </Button>
+              {mode !== 'unsigned_dev' && (
+                <div className="p-4 rounded-lg bg-muted/50 border border-border">
+                  <Label className="mb-2 block">Claim Token</Label>
+                  <div className="flex items-center gap-2">
+                    <code className="flex-1 font-mono p-3 rounded bg-background border border-border text-sm break-all" style={{ color: 'var(--text-primary)' }}>
+                      {claimToken}
+                    </code>
+                    <Button
+                      size="icon"
+                      variant="outline"
+                      onClick={handleCopy}
+                      className="shrink-0 border-border"
+                    >
+                      {copied ? <Check className="w-4 h-4 text-success" /> : <Copy className="w-4 h-4" />}
+                    </Button>
+                  </div>
                 </div>
-              </div>
+              )}
+
+              {mode === 'unsigned_dev' && devicePublicKey && (
+                <div className="p-4 rounded-lg bg-muted/50 border border-border">
+                  <Label className="mb-2 block">Device Public Key</Label>
+                  <div className="flex items-center gap-2">
+                    <ShieldAlert className="w-4 h-4 text-warning shrink-0" />
+                    <code className="flex-1 font-mono text-xs break-all" style={{ color: 'var(--text-primary)' }}>
+                      {devicePublicKey}
+                    </code>
+                  </div>
+                </div>
+              )}
 
               {mode === 'real' && walletPublicKey && (
                 <div className="p-4 rounded-lg bg-muted/50 border border-border">
@@ -705,14 +888,30 @@ export function RegisterSensorDialog({ open, onOpenChange, onRegister }: Registe
                 </div>
               )}
 
-              <div className="p-4 rounded-lg bg-success/10 border border-success/30">
-                <h4 className="mb-2" style={{ fontWeight: 600, color: 'var(--success)' }}>
-                  ✓ {mode === 'real' ? 'Blockchain Link Complete' : 'Registration Complete'}
+              <div
+                className={`p-4 rounded-lg border ${
+                  mode === 'unsigned_dev'
+                    ? 'bg-warning/10 border-warning/30'
+                    : 'bg-success/10 border-success/30'
+                }`}
+              >
+                <h4
+                  className="mb-2"
+                  style={{
+                    fontWeight: 600,
+                    color: mode === 'unsigned_dev' ? 'var(--warning)' : 'var(--success)',
+                  }}
+                >
+                  {mode === 'unsigned_dev'
+                    ? '⚠ Signature Bypass Active'
+                    : `✓ ${mode === 'real' ? 'Blockchain Link Complete' : 'Registration Complete'}`}
                 </h4>
                 <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
-                  {mode === 'real' 
+                  {mode === 'real'
                     ? 'Your sensor is now linked to your Solana wallet. The NFT will be minted when the device sends its first verified reading.'
-                    : 'Your mock sensor is ready to generate test data automatically.'}
+                    : mode === 'unsigned_dev'
+                      ? 'Readings arriving with the unsigned_dev marker will be accepted and persisted, but are not eligible for on-chain anchoring until the firmware signing pipeline is ported.'
+                      : 'Your mock sensor is ready to generate test data automatically.'}
                 </p>
               </div>
 
@@ -728,6 +927,13 @@ export function RegisterSensorDialog({ open, onOpenChange, onRegister }: Registe
                       <li>3. The device will use this token to sign and authenticate readings</li>
                       <li>4. Start sending data to the Sparked Sense API endpoint</li>
                       <li>5. First verified reading will trigger NFT minting to your wallet</li>
+                    </>
+                  ) : mode === 'unsigned_dev' ? (
+                    <>
+                      <li>1. Firmware publishes envelopes with <code>signature: "unsigned_dev"</code></li>
+                      <li>2. The backend validates device identity via the public key you just registered</li>
+                      <li>3. Card shows the <code>Unsigned Dev</code> badge while the bypass is active</li>
+                      <li>4. When signing lands, this sensor can be upgraded to <code>real</code> without changing its device identity</li>
                     </>
                   ) : (
                     <>

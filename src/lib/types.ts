@@ -5,10 +5,11 @@ export interface Sensor {
   description: string;
   visibility: 'public' | 'private' | 'partial';
   status: 'active' | 'inactive' | 'reconnecting';
-  mode: 'mock' | 'real';
+  mode: 'mock' | 'real' | 'unsigned_dev';
   owner: string;
   claimToken?: string;
   walletPublicKey?: string;
+  devicePublicKey?: string;
   thumbnailUrl?: string;
   location?: string;
   latitude?: number;

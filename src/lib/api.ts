@@ -85,6 +85,23 @@ export const sensorAPI = {
     return data.claimToken as string;
   },
 
+  // ADR-012: Step 1 of /server/register-device for unsigned_dev sensors.
+  // Creates/updates the device row with mac_address + public_key. No challenge
+  // verification — the returned `challenge` is discarded because unsigned_dev
+  // never proceeds to Step 2.
+  registerDeviceStep1: async (macAddress: string, publicKey: string) => {
+    const response = await fetch(`${API_BASE}/register-device`, {
+      method: "POST",
+      headers: getAuthHeaders(),
+      body: JSON.stringify({ macAddress, publicKey }),
+    });
+    if (!response.ok) {
+      const error = await response.text();
+      throw new Error(`Failed to register device (Step 1): ${error}`);
+    }
+    return response.json();
+  },
+
   retrieveClaimToken: async (
     walletPublicKey: string,
     macAddress: string,
