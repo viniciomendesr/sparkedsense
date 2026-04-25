@@ -877,6 +877,112 @@ app.put("/server/sensors/:id", async (c) => {
   }
 });
 
+// ADR-014: deferred mint endpoint. Owner-only. Server wallet pays mint cost
+// (devnet today; mainnet revisits this — see ADR-014 open questions).
+//
+// Mint flow today is the same simulated pattern as Step 2 of /server/register-device:
+// random nft_address + claim_token + tx_signature placeholder. When real on-chain
+// minting lands (Metaplex-capable runtime), this endpoint becomes the single seam
+// where that change is implemented.
+//
+// Trust-model note: this mint does NOT prove the device physically possesses
+// the private key (no challenge-response). The trust still flows from per-event
+// signature verification at /server/reading. The mint is the on-chain anchor of
+// sensor identity; events that arrive without signatures continue to be flagged
+// as unverified per ADR-011 even after mint.
+app.post("/server/sensors/:id/mint", async (c) => {
+  try {
+    const user = await getUserFromToken(c.req.raw);
+    if (!user) {
+      return c.json({ error: 'Unauthorized' }, 401);
+    }
+
+    const id = c.req.param('id');
+    const sensor = await kv.get(`sensor:${user.id}:${id}`);
+    if (!sensor) {
+      return c.json({ error: 'Sensor not found' }, 404);
+    }
+    if (!isUnverifiedMode(sensor.mode)) {
+      return c.json({
+        error: `Mint only applies to unverified sensors (current mode: ${sensor.mode})`,
+        code: 'mint_invalid_mode',
+      }, 400);
+    }
+    if (!sensor.devicePublicKey) {
+      return c.json({
+        error: 'Sensor has no devicePublicKey — re-register before minting',
+        code: 'mint_missing_pubkey',
+      }, 400);
+    }
+
+    // Resolve the device row by pubkey. It must already exist (created by Step 1
+    // of /server/register-device when the sensor was first registered).
+    const { data: device, error: fetchError } = await supabase
+      .from('devices')
+      .select('*')
+      .eq('public_key', sensor.devicePublicKey)
+      .single();
+
+    if (fetchError || !device) {
+      return c.json({ error: 'Device row not found for this sensor', code: 'mint_device_not_found' }, 404);
+    }
+
+    // Idempotency: if device already has an nft_address, return existing identity.
+    // Sensor side may still be 'unverified' if a previous mint partially failed —
+    // we recover by syncing both sides.
+    let nftAddress = device.nft_address as string | null;
+    let claimToken = device.claim_token as string | null;
+    let txSignature = device.tx_signature as string | null;
+
+    if (!nftAddress) {
+      const nftBytes = new Uint8Array(32);
+      crypto.getRandomValues(nftBytes);
+      nftAddress = Array.from(nftBytes).map(b => b.toString(16).padStart(2, '0')).join('');
+
+      const tokenBytes = new Uint8Array(16);
+      crypto.getRandomValues(tokenBytes);
+      claimToken = Array.from(tokenBytes).map(b => b.toString(16).padStart(2, '0')).join('');
+
+      txSignature = 'devnet_sim_' + Array.from(nftBytes).slice(0, 16)
+        .map(b => b.toString(16).padStart(2, '0')).join('');
+
+      const { error: updateError } = await supabase
+        .from('devices')
+        .update({
+          nft_address: nftAddress,
+          claim_token: claimToken,
+          tx_signature: txSignature,
+          challenge: null,
+        })
+        .eq('public_key', sensor.devicePublicKey);
+
+      if (updateError) {
+        console.error('Mint device update error:', updateError);
+        return c.json({ error: 'DB error: ' + updateError.message, code: 'mint_db_error' }, 500);
+      }
+    }
+
+    // Promote sensor: unverified → real, persist mint metadata.
+    const updatedSensor = {
+      ...sensor,
+      mode: 'real',
+      claimToken,
+      nftAddress,
+      txSignature,
+      mintedAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    await kv.set(`sensor:${user.id}:${id}`, updatedSensor);
+
+    console.log(`✨ Minted sensor ${id} (ADR-014) — pubkey=${sensor.devicePublicKey.substring(0, 16)}... nft=${nftAddress.substring(0, 16)}...`);
+
+    return c.json({ sensor: updatedSensor });
+  } catch (err: any) {
+    console.error('Mint error:', err);
+    return c.json({ error: err.message || 'Internal server error', code: 'mint_internal_error' }, 500);
+  }
+});
+
 // Re-derive the human-readable location text from the sensor's stored lat/lng.
 // Useful after changing the location-text formatter (e.g., adding neighborhood) for
 // sensors that already have coords ingested from firmware. Owner-only. Does NOT

@@ -165,6 +165,21 @@ export const sensorAPI = {
     return data.sensor as Sensor;
   },
 
+  // ADR-014: deferred mint. Promotes a sensor in `unverified` mode to `real`,
+  // attaching nft_address + claim_token. Server wallet pays on devnet.
+  mint: async (id: string, accessToken: string) => {
+    const response = await fetch(`${API_BASE}/sensors/${id}/mint`, {
+      method: "POST",
+      headers: getAuthHeaders(accessToken),
+    });
+    if (!response.ok) {
+      const error = await response.text();
+      throw new Error(`Failed to mint sensor: ${error}`);
+    }
+    const data = await response.json();
+    return data.sensor as Sensor;
+  },
+
   update: async (id: string, updates: Partial<Sensor>, accessToken: string) => {
     const response = await fetch(`${API_BASE}/sensors/${id}`, {
       method: "PUT",

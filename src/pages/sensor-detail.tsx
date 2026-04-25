@@ -40,7 +40,8 @@ import {
   MapPin,
   Pencil,
   RefreshCw,
-  Download
+  Download,
+  Hexagon
 } from 'lucide-react';
 import { SensorChart } from '../components/sensor-chart';
 import { useAuth } from '../lib/auth-context';
@@ -87,6 +88,28 @@ export function SensorDetailPage({
   const [sensorName, setSensorName] = useState(sensor.name);
   const [sensorDescription, setSensorDescription] = useState(sensor.description);
   const [sensorLocation, setSensorLocation] = useState(sensor.location);
+  // ADR-014: mode shadow so the UI reacts to a successful mint without a parent
+  // refetch. Dashboard re-polls and re-renders the parent within ~3s, but the
+  // detail page reads the badge from this state in the meantime.
+  const [currentMode, setCurrentMode] = useState<Sensor['mode']>(sensor.mode);
+  const [minting, setMinting] = useState(false);
+
+  const handleMintNFT = async () => {
+    if (!accessToken) return;
+    setMinting(true);
+    try {
+      const updated = await sensorAPI.mint(sensor.id, accessToken);
+      setCurrentMode(updated.mode);
+      toast.success('Sensor minted', {
+        description: `Now in ${updated.mode} mode. NFT: ${(updated as any).nftAddress?.substring(0, 16) ?? 'pending'}…`,
+      });
+    } catch (err: any) {
+      console.error('Mint failed:', err);
+      toast.error(err?.message || 'Mint failed');
+    } finally {
+      setMinting(false);
+    }
+  };
   const [isRefreshingLocation, setIsRefreshingLocation] = useState(false);
 
   const handleRefreshLocation = async () => {
@@ -726,15 +749,34 @@ export function SensorDetailPage({
             </div>
           </div>
 
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setDeleteSensorDialogOpen(true)}
-            className="border-destructive/50 text-destructive hover:bg-destructive/10"
-          >
-            <Trash2 className="w-4 h-4 mr-2" />
-            Delete Sensor
-          </Button>
+          <div className="flex items-center gap-2">
+            {currentMode === 'unverified' && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleMintNFT}
+                disabled={minting}
+                className="border-warning/50 text-warning hover:bg-warning/10"
+                title="Promote this sensor by minting an NFT on Solana devnet (ADR-014). Server wallet pays the fee."
+              >
+                {minting ? (
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                ) : (
+                  <Hexagon className="w-4 h-4 mr-2" />
+                )}
+                {minting ? 'Minting…' : 'Mint NFT'}
+              </Button>
+            )}
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setDeleteSensorDialogOpen(true)}
+              className="border-destructive/50 text-destructive hover:bg-destructive/10"
+            >
+              <Trash2 className="w-4 h-4 mr-2" />
+              Delete Sensor
+            </Button>
+          </div>
         </div>
       </Card>
 
