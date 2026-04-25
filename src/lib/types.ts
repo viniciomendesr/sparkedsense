@@ -5,7 +5,7 @@ export interface Sensor {
   description: string;
   visibility: 'public' | 'private' | 'partial';
   status: 'active' | 'inactive' | 'reconnecting';
-  mode: 'mock' | 'real' | 'unsigned_dev';
+  mode: 'mock' | 'real' | 'unverified';
   owner: string;
   claimToken?: string;
   walletPublicKey?: string;

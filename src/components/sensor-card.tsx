@@ -122,20 +122,20 @@ export function SensorCard({ sensor, liveData, onViewDetails, showMiniSparkline 
             <Badge variant="outline" className="bg-accent/20 text-accent border-accent/30">
               Real Data
             </Badge>
-          ) : sensor.mode === 'unsigned_dev' ? (
+          ) : sensor.mode === 'unverified' ? (
             <TooltipProvider>
               <Tooltip>
                 <TooltipTrigger asChild>
                   <div>
                     <Badge variant="outline" className="bg-warning/20 text-warning border-warning/30 cursor-help">
                       <ShieldAlert className="w-3 h-3 mr-1" />
-                      Unsigned Dev
+                      Unverified
                     </Badge>
                   </div>
                 </TooltipTrigger>
                 <TooltipContent side="top" className="max-w-xs">
                   <p className="text-sm">
-                    Real physical device publishing real readings under the ADR-011 signature bypass. The firmware signing pipeline has not been ported yet, so events carry the <code>unsigned_dev</code> marker and are not eligible for on-chain anchoring.
+                    Physical device registered but not yet minted as an NFT on Solana. Readings are stored and can be inspected, but identity attestation is deferred until the owner triggers the mint (ADR-014). Events without a valid signature carry the <code>unsigned_dev</code> wire marker and are not eligible for on-chain anchoring.
                   </p>
                 </TooltipContent>
               </Tooltip>
@@ -145,7 +145,7 @@ export function SensorCard({ sensor, liveData, onViewDetails, showMiniSparkline 
               Mock Data
             </Badge>
           )}
-          {sensor.mode !== 'unsigned_dev' && (
+          {sensor.mode !== 'unverified' && (
             <TooltipProvider>
               <Tooltip>
                 <TooltipTrigger asChild>

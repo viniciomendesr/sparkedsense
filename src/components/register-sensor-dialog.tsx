@@ -66,7 +66,7 @@ export function RegisterSensorDialog({ open, onOpenChange, onRegister }: Registe
       });
 
       setStep('token');
-    } else if (mode === 'unsigned_dev') {
+    } else if (mode === 'unverified') {
       // ADR-012: physical device with pending signing pipeline. Skip wallet/NFT,
       // go to the MAC + device pubkey form which calls register-device Step 1.
       setStep('unsigned-device');
@@ -92,7 +92,7 @@ export function RegisterSensorDialog({ open, onOpenChange, onRegister }: Registe
         type,
         description,
         visibility,
-        mode: 'unsigned_dev',
+        mode: 'unverified',
         devicePublicKey,
       });
 
@@ -124,7 +124,7 @@ export function RegisterSensorDialog({ open, onOpenChange, onRegister }: Registe
     // ADR-012 unsigned_dev flow uses raw hex pubkeys (secp256k1, 64 or 66+ hex chars).
     const base58Regex = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
     const hexRegex = /^[0-9a-fA-F]{64,130}$/;
-    if (mode === 'unsigned_dev') return hexRegex.test(key);
+    if (mode === 'unverified') return hexRegex.test(key);
     return base58Regex.test(key);
   };
 
@@ -344,7 +344,7 @@ export function RegisterSensorDialog({ open, onOpenChange, onRegister }: Registe
 
                 <Card
                   className="p-6 cursor-pointer border-2 hover:border-warning/50 transition-all duration-200"
-                  onClick={() => handleModeSelect('unsigned_dev')}
+                  onClick={() => handleModeSelect('unverified')}
                 >
                   <div className="flex flex-col items-center text-center space-y-3">
                     <div className="w-12 h-12 rounded-lg bg-warning/10 flex items-center justify-center">
@@ -352,10 +352,10 @@ export function RegisterSensorDialog({ open, onOpenChange, onRegister }: Registe
                     </div>
                     <div>
                       <h3 className="mb-2" style={{ fontWeight: 600, color: 'var(--text-primary)' }}>
-                        Unsigned Sensor
+                        Unverified Sensor
                       </h3>
                       <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
-                        For physical devices whose signing pipeline is still being ported
+                        Physical device that publishes data immediately; mint NFT later from the sensor page
                       </p>
                     </div>
                   </div>
@@ -364,7 +364,7 @@ export function RegisterSensorDialog({ open, onOpenChange, onRegister }: Registe
 
               <div className="p-4 rounded-lg bg-info/10 border border-info/30">
                 <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
-                  💡 Mock sensors generate random readings for demos. Unsigned sensors accept real data under the ADR-011 signature bypass until firmware signing is ported.
+                  💡 Mock sensors generate random readings for demos. Unverified sensors accept real data right away — you can mint the NFT later from the sensor detail page (ADR-014).
                 </p>
               </div>
 
@@ -726,9 +726,9 @@ export function RegisterSensorDialog({ open, onOpenChange, onRegister }: Registe
         ) : step === 'unsigned-device' ? (
           <>
             <DialogHeader>
-              <DialogTitle style={{ color: 'var(--text-primary)' }}>Register Unsigned Physical Sensor</DialogTitle>
+              <DialogTitle style={{ color: 'var(--text-primary)' }}>Register Unverified Sensor</DialogTitle>
               <DialogDescription style={{ color: 'var(--text-secondary)' }}>
-                Provide the device MAC address and public key. We register the device identity so incoming readings under the <code>unsigned_dev</code> signature marker are routed to this sensor. No NFT is minted — the sensor operates under the ADR-011 bypass until the signing pipeline is ported.
+                Provide the device MAC address and public key. We register the device identity so incoming readings are routed to this sensor. No NFT is minted upfront — you can mint later from the sensor detail page (ADR-014). Events that arrive without a valid signature carry the <code>unsigned_dev</code> wire marker (ADR-011).
               </DialogDescription>
             </DialogHeader>
 
@@ -775,7 +775,7 @@ export function RegisterSensorDialog({ open, onOpenChange, onRegister }: Registe
                 <div className="flex items-start gap-2">
                   <ShieldAlert className="w-4 h-4 text-warning shrink-0 mt-0.5" />
                   <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
-                    This sensor will not be minted as an NFT. Readings will be accepted with the literal <code>unsigned_dev</code> signature marker per ADR-011. When firmware signing lands, the sensor can be upgraded to <code>real</code> without changing the device public key.
+                    The sensor enters <code>unverified</code> state and starts publishing immediately. To enable on-chain attestation, click <strong>Mint NFT</strong> on the sensor detail page (ADR-014). The device public key stays the same after minting.
                   </p>
                 </div>
               </div>
@@ -831,14 +831,14 @@ export function RegisterSensorDialog({ open, onOpenChange, onRegister }: Registe
               <DialogTitle style={{ color: 'var(--text-primary)' }}>
                 {mode === 'real'
                   ? 'Sensor Successfully Linked!'
-                  : mode === 'unsigned_dev'
+                  : mode === 'unverified'
                     ? 'Unsigned Sensor Registered'
                     : 'Sensor Registered Successfully!'}
               </DialogTitle>
               <DialogDescription style={{ color: 'var(--text-secondary)' }}>
                 {mode === 'real'
                   ? 'Sensor successfully registered and linked to blockchain.'
-                  : mode === 'unsigned_dev'
+                  : mode === 'unverified'
                     ? 'Your sensor is registered under the ADR-011 signature bypass. Readings will be accepted from the device public key you provided — no claim token, no NFT.'
                     : 'Your sensor has been minted as an NFT. Use the claim token below to authenticate your device firmware.'}
               </DialogDescription>
@@ -848,12 +848,12 @@ export function RegisterSensorDialog({ open, onOpenChange, onRegister }: Registe
               {/* Top row: identity artifact (claim token / device pubkey / wallet) + status badge */}
               <div
                 className={
-                  mode === 'unsigned_dev' || mode === 'real'
+                  mode === 'unverified' || mode === 'real'
                     ? 'grid grid-cols-1 md:grid-cols-2 gap-4'
                     : 'space-y-4'
                 }
               >
-                {mode !== 'unsigned_dev' && (
+                {mode !== 'unverified' && (
                   <div className="p-4 rounded-lg bg-muted/50 border border-border">
                     <Label className="mb-2 block">Claim Token</Label>
                     <div className="flex items-center gap-2">
@@ -872,7 +872,7 @@ export function RegisterSensorDialog({ open, onOpenChange, onRegister }: Registe
                   </div>
                 )}
 
-                {mode === 'unsigned_dev' && devicePublicKey && (
+                {mode === 'unverified' && devicePublicKey && (
                   <div className="p-4 rounded-lg bg-muted/50 border border-border">
                     <Label className="mb-2 block">Device Public Key</Label>
                     <div className="flex items-start gap-2">
@@ -898,7 +898,7 @@ export function RegisterSensorDialog({ open, onOpenChange, onRegister }: Registe
 
                 <div
                   className={`p-4 rounded-lg border ${
-                    mode === 'unsigned_dev'
+                    mode === 'unverified'
                       ? 'bg-warning/10 border-warning/30'
                       : 'bg-success/10 border-success/30'
                   }`}
@@ -907,17 +907,17 @@ export function RegisterSensorDialog({ open, onOpenChange, onRegister }: Registe
                     className="mb-2 text-sm"
                     style={{
                       fontWeight: 600,
-                      color: mode === 'unsigned_dev' ? 'var(--warning)' : 'var(--success)',
+                      color: mode === 'unverified' ? 'var(--warning)' : 'var(--success)',
                     }}
                   >
-                    {mode === 'unsigned_dev'
+                    {mode === 'unverified'
                       ? '⚠ Signature Bypass Active'
                       : `✓ ${mode === 'real' ? 'Blockchain Link Complete' : 'Registration Complete'}`}
                   </h4>
                   <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
                     {mode === 'real'
                       ? 'Sensor linked to your Solana wallet. The NFT will be minted on first verified reading.'
-                      : mode === 'unsigned_dev'
+                      : mode === 'unverified'
                         ? 'Readings with the unsigned_dev marker are accepted and persisted, but are not eligible for on-chain anchoring until firmware signing is ported.'
                         : 'Your mock sensor is ready to generate test data automatically.'}
                   </p>
@@ -937,7 +937,7 @@ export function RegisterSensorDialog({ open, onOpenChange, onRegister }: Registe
                       <li>4. Start sending data to the Sparked Sense API endpoint</li>
                       <li>5. First verified reading will trigger NFT minting to your wallet</li>
                     </>
-                  ) : mode === 'unsigned_dev' ? (
+                  ) : mode === 'unverified' ? (
                     <>
                       <li>1. Firmware publishes envelopes with <code>signature: "unsigned_dev"</code></li>
                       <li>2. The backend validates device identity via the public key you just registered</li>

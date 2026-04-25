@@ -25,6 +25,8 @@ Each ADR documents a single architectural decision with its context, rationale, 
 | [009](009-wifi-geolocation-for-sensors.md) | WiFi-based geolocation for physical sensors (Mylnikov API) | Accepted | 2026-03-17 | 2026-03-17 |
 | [010](010-sensor-agnostic-ingestion-envelope.md) | Sensor-agnostic ingestion envelope via CloudEvents + SenML | Accepted | 2026-04-22 | 2026-04-22 |
 | [011](011-unsigned-dev-bypass-for-unported-devices.md) | `unsigned_dev` signature bypass for devices without ported signing pipeline | Accepted | 2026-04-22 | 2026-04-22 |
-| [012](012-unsigned-dev-sensor-mode.md) | `unsigned_dev` sensor mode in dashboard for devices in ADR-011 transition | Accepted | 2026-04-23 | 2026-04-23 |
+| [012](012-unsigned-dev-sensor-mode.md) | `unsigned_dev` sensor mode in dashboard for devices in ADR-011 transition | Superseded by [ADR-014] | 2026-04-23 | 2026-04-23 |
 | [012](012-solana-memo-anchoring.md) | Solana Memo Program anchoring for dataset Merkle roots (ADR-007 partial) | Accepted | 2026-04-22 | 2026-04-22 |
 | [013](013-edge-function-jwt-disabled-for-device-ingestion.md) | Disable Supabase JWT gateway on the `server` Edge Function | Accepted | 2026-04-24 | 2026-04-24 |
+| [014](014-deferred-nft-minting.md) | Deferred NFT minting (`unverified` as the default sensor state) | Accepted | 2026-04-25 | 2026-04-25 |
+| [015](015-unify-ingestion-on-adr-010.md) | Unify ingestion on `/server/reading` (ADR-010 envelope) | Accepted | 2026-04-25 | 2026-04-25 |

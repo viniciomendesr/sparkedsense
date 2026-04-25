@@ -32,9 +32,9 @@ export function EditSensorDialog({ open, onOpenChange, sensor, onSaved }: EditSe
   const [coordsError, setCoordsError] = useState('');
   const [saving, setSaving] = useState(false);
 
-  // ADR-012: only unsigned_dev sensors accept user-supplied location. `real`
-  // sensors receive location from firmware; `mock` sensors are virtual.
-  const canEditLocation = sensor.mode === 'unsigned_dev';
+  // ADR-014: unverified sensors accept user-supplied location until mint.
+  // `real` sensors receive location from signed firmware; `mock` are virtual.
+  const canEditLocation = sensor.mode === 'unverified';
 
   useEffect(() => {
     if (open) {
@@ -144,7 +144,7 @@ export function EditSensorDialog({ open, onOpenChange, sensor, onSaved }: EditSe
           <DialogTitle>Edit sensor</DialogTitle>
           <DialogDescription>
             {canEditLocation
-              ? 'Update title, description, and location. Location is editable here because the firmware signing pipeline for this unsigned sensor has not been ported yet (ADR-012).'
+              ? 'Update title, description, and location. Location is editable here because this sensor has not been minted yet (ADR-014). After minting, location becomes firmware-attested and read-only.'
               : 'Update the title and description of your sensor.'}
           </DialogDescription>
         </DialogHeader>

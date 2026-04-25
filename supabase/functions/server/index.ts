@@ -87,10 +87,17 @@ const resolveNftAddress = async (sensorId: string, sensor: any): Promise<string 
   return device?.nft_address || null;
 };
 
-// ADR-012: resolve sensor (mode=unsigned_dev) → devices.id via devicePublicKey.
-// unsigned_dev sensors never receive a claim_token, so we match on the raw pubkey
-// the frontend stored when calling register-device Step 1.
-const resolveDeviceIdForUnsignedDev = async (sensor: any): Promise<string | null> => {
+// ADR-014: backwards-compat shim. Old KV records have mode 'unsigned_dev' (ADR-012
+// naming); new records write 'unverified'. All read paths normalize on the way
+// out so downstream code only ever sees the new value. Eventually a one-time
+// migration script will rewrite the KV rows and this helper can be removed.
+const isUnverifiedMode = (mode: any): boolean =>
+  mode === 'unverified' || mode === 'unsigned_dev';
+
+// ADR-014: resolve sensor (mode=unverified) → devices.id via devicePublicKey.
+// Unverified sensors don't have a claim_token (mint hasn't happened), so we
+// match on the raw pubkey the frontend stored when calling register-device Step 1.
+const resolveDeviceIdForUnverified = async (sensor: any): Promise<string | null> => {
   if (!sensor?.devicePublicKey) return null;
   const { data: device } = await supabase
     .from('devices')
@@ -205,10 +212,11 @@ const getSensorReadings = async (
     });
   }
 
-  // ADR-012: unsigned_dev sensors live in the `readings` table (ADR-010 envelopes),
+  // ADR-014: unverified sensors live in the `readings` table (ADR-010 envelopes),
   // keyed by device_id not nft_address. Resolve via devicePublicKey and query.
-  if (sensor?.mode === 'unsigned_dev') {
-    const deviceId = await resolveDeviceIdForUnsignedDev(sensor);
+  // isUnverifiedMode also matches the legacy 'unsigned_dev' KV value (backwards-compat).
+  if (isUnverifiedMode(sensor?.mode)) {
+    const deviceId = await resolveDeviceIdForUnverified(sensor);
     if (!deviceId) return [];
 
     let q = supabase
@@ -342,9 +350,10 @@ const countSensorReadings = async (
     if (options?.until) readings = readings.filter((r: any) => new Date(r.timestamp) <= options.until!);
     return readings.length;
   }
-  // ADR-012: unsigned_dev → count rows in `readings` table by device_id
-  if (sensor?.mode === 'unsigned_dev') {
-    const deviceId = await resolveDeviceIdForUnsignedDev(sensor);
+  // ADR-014: unverified → count rows in `readings` table by device_id.
+  // isUnverifiedMode matches both the new 'unverified' and the legacy 'unsigned_dev'.
+  if (isUnverifiedMode(sensor?.mode)) {
+    const deviceId = await resolveDeviceIdForUnverified(sensor);
     if (!deviceId) return 0;
     let q = supabase
       .from('readings')
@@ -719,25 +728,30 @@ app.post("/server/sensors", async (c) => {
 
     const { name, type, description, visibility, mode, claimToken, walletPublicKey, devicePublicKey } = await c.req.json();
 
-    const resolvedMode = mode || 'real';
-    const VALID_MODES = ['real', 'mock', 'unsigned_dev'] as const;
+    // ADR-014: accept the legacy 'unsigned_dev' alias on input but normalize to
+    // 'unverified' for storage. Eventually the alias acceptance can be dropped
+    // once all clients have been redeployed.
+    const rawMode = mode || 'real';
+    const resolvedMode = rawMode === 'unsigned_dev' ? 'unverified' : rawMode;
+    const VALID_MODES = ['real', 'mock', 'unverified'] as const;
     if (!VALID_MODES.includes(resolvedMode)) {
       return c.json({ error: `Invalid mode: ${resolvedMode}. Expected one of ${VALID_MODES.join(', ')}` }, 400);
     }
 
-    // ADR-012: unsigned_dev sensors skip challenge-response and NFT mint.
-    // The caller must have already registered the device via Step 1 of
+    // ADR-014: unverified sensors skip challenge-response and NFT mint at create
+    // time. The caller must have already registered the device via Step 1 of
     // /server/register-device, so a row in `devices` exists for devicePublicKey.
-    if (resolvedMode === 'unsigned_dev' && !devicePublicKey) {
-      return c.json({ error: 'devicePublicKey is required for unsigned_dev mode' }, 400);
+    // Mint can be triggered later via POST /server/sensors/:id/mint.
+    if (resolvedMode === 'unverified' && !devicePublicKey) {
+      return c.json({ error: 'devicePublicKey is required for unverified mode' }, 400);
     }
 
     const id = generateId();
 
     // Real sensors get a claim token to link to their NFT-minted device.
     // Mock sensors get a generated token for internal consistency.
-    // unsigned_dev sensors have no claim token — no NFT, no on-chain ownership.
-    const finalClaimToken = resolvedMode === 'unsigned_dev' ? null : (claimToken || generateId());
+    // Unverified sensors have no claim token until mint completes.
+    const finalClaimToken = resolvedMode === 'unverified' ? null : (claimToken || generateId());
 
     const sensor = {
       id,
@@ -746,11 +760,11 @@ app.post("/server/sensors", async (c) => {
       description,
       visibility,
       mode: resolvedMode,
-      status: resolvedMode === 'mock' ? 'active' : 'inactive', // Mock is immediately active; real/unsigned_dev activate on first POST
+      status: resolvedMode === 'mock' ? 'active' : 'inactive', // Mock is immediately active; real/unverified activate on first POST
       owner: user.id,
       claimToken: finalClaimToken,
       walletPublicKey: walletPublicKey || null,
-      devicePublicKey: resolvedMode === 'unsigned_dev' ? devicePublicKey : (devicePublicKey || null),
+      devicePublicKey: resolvedMode === 'unverified' ? devicePublicKey : (devicePublicKey || null),
       thumbnailUrl: null,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
@@ -762,9 +776,9 @@ app.post("/server/sensors", async (c) => {
       console.log(`Initializing mock sensor ${id} with sample readings`);
     }
 
-    if (resolvedMode === 'unsigned_dev') {
-      // ADR-011/ADR-012 audit trail: explains why this sensor lacks NFT/claim_token.
-      console.warn(`🔓 Created sensor ${id} in unsigned_dev mode (ADR-012) — device ${devicePublicKey.substring(0, 16)}... publishes real data with signature bypass per ADR-011. No NFT minted.`);
+    if (resolvedMode === 'unverified') {
+      // ADR-014 audit trail: explains why this sensor lacks NFT/claim_token at creation.
+      console.warn(`🔓 Created sensor ${id} in unverified mode (ADR-014) — device ${devicePublicKey.substring(0, 16)}... publishes real data; mint deferred. No NFT yet.`);
     } else {
       console.log(`Created sensor ${id} (mode: ${resolvedMode}, wallet: ${walletPublicKey ? 'linked' : 'none'})`);
     }
@@ -811,11 +825,12 @@ const buildLocationText = (
 // must never be mutable by the user — changing them would break the DePIN trust model.
 const USER_EDITABLE_SENSOR_FIELDS = ['name', 'description', 'visibility'] as const;
 
-// ADR-012: unsigned_dev devices don't ship geolocation yet (firmware is still
-// being ported). Until that lands, the user manually sets the sensor's location
-// so the card/audit surface isn't blank. Once the firmware starts publishing
-// signed geolocation, this editability should go away on upgrade to `real`.
-const UNSIGNED_DEV_EXTRA_EDITABLE_FIELDS = [
+// ADR-014: unverified sensors don't have signed geolocation yet (mint hasn't
+// happened, firmware may not even publish signed events). Until mint, the user
+// manually sets the sensor's location so the card/audit surface isn't blank.
+// After mint, location becomes firmware-attested and this editability is removed
+// (the gating is by mode === 'unverified', not a per-sensor flag).
+const UNVERIFIED_EXTRA_EDITABLE_FIELDS = [
   'location',
   'latitude',
   'longitude',
@@ -833,10 +848,10 @@ app.put("/server/sensors/:id", async (c) => {
     const body = await c.req.json();
 
     const existingForMode = await kv.get(`sensor:${user.id}:${id}`);
-    const isUnsignedDev = existingForMode?.mode === 'unsigned_dev';
-
-    const editable: readonly string[] = isUnsignedDev
-      ? [...USER_EDITABLE_SENSOR_FIELDS, ...UNSIGNED_DEV_EXTRA_EDITABLE_FIELDS]
+    // ADR-014: isUnverifiedMode handles both the new 'unverified' value and the
+    // legacy 'unsigned_dev' for KV records that haven't been migrated yet.
+    const editable: readonly string[] = isUnverifiedMode(existingForMode?.mode)
+      ? [...USER_EDITABLE_SENSOR_FIELDS, ...UNVERIFIED_EXTRA_EDITABLE_FIELDS]
       : USER_EDITABLE_SENSOR_FIELDS;
 
     if (!existingForMode) {
@@ -2443,7 +2458,7 @@ app.post("/server/reading", async (c) => {
         // Only fills fields that are still empty — once a user edits location via
         // the UI, their value is authoritative and we never overwrite it. `real`
         // sensors go through the signed-geolocation path instead, so we gate by mode.
-        if (linkedSensor.mode === 'unsigned_dev') {
+        if (isUnverifiedMode(linkedSensor.mode)) {
           const envAny = envelope as unknown as Record<string, unknown>;
           const envLat = typeof envAny.latitude === 'number' ? envAny.latitude as number : null;
           const envLng = typeof envAny.longitude === 'number' ? envAny.longitude as number : null;

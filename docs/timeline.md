@@ -387,7 +387,28 @@ Supabase advisor reported 5 ERROR + 4 WARN; migration 004 drove it to 0 ERROR + 
 4. ~~Anchoring transaction format~~ — done: Memo Program via [ADR-012](adr/012-solana-memo-anchoring.md)
 5. ~~Real Solana devnet integration (dataset anchoring)~~ — done (Phase 15); NFT minting still deferred
 
-**Also pending (post-demo):** ESP32-S3 secp256k1 signing pipeline port (removes [ADR-011](adr/011-unsigned-dev-bypass-for-unported-devices.md) bypass), firmware resilience (WiFi reconnection, watchdog, HTTPS timeout — see audit), backend modularization (`index.ts` split), open source documentation, ESP8266 migration from legacy `POST /sensor-data` to native envelope emission (see ADR-010 item 8), server-side downsampling (LTTB) for charts past ~30k readings per fetch (free-tier edge memory is the binding constraint, not CPU), Supabase Auth `leaked_password_protection` toggle via dashboard.
+**Also pending (post-demo):** ESP32-S3 secp256k1 signing pipeline port (removes [ADR-011](adr/011-unsigned-dev-bypass-for-unported-devices.md) bypass), firmware resilience (WiFi reconnection, watchdog, HTTPS timeout — see audit), backend modularization (`index.ts` split), open source documentation, ESP8266 migration from legacy `POST /sensor-data` to native envelope emission (see ADR-010 item 8 + new [ADR-015](adr/015-unify-ingestion-on-adr-010.md)), server-side downsampling (LTTB) for charts past ~30k readings per fetch (free-tier edge memory is the binding constraint, not CPU), Supabase Auth `leaked_password_protection` toggle via dashboard.
+
+### Phase 16 — Post-demo refactor: deferred minting + ingestion unification (25 Apr 2026)
+
+The 2026-04-24 Claro demo exposed a structural friction: every physical device had to mint an NFT *before* it could publish, which is wrong as a default for a DePIN platform aiming at commodity hardware. The `unsigned_dev` mode introduced for the demo (ADR-012) turned out to be the right shape for the *general* case, not a one-off patch.
+
+Two new ADRs formalise the direction:
+
+- [ADR-014](adr/014-deferred-nft-minting.md) — **Deferred NFT minting**. All physical devices register in mode `unverified` (renamed from `unsigned_dev`) and start publishing immediately. Mint becomes an explicit user action via a "Mint NFT" button, paid by the server wallet on devnet. Sensor transitions `unverified → real` when mint confirms onchain. Datasets keep mixed-signature provenance metadata so auditors see the attestation composition explicitly. Supersedes ADR-012 (mode renaming) and partially supersedes ADR-003 (mint-first registration is no longer mandatory).
+- [ADR-015](adr/015-unify-ingestion-on-adr-010.md) — **Unify ingestion on `/server/reading`** (ADR-010 envelope). The legacy `/server/sensor-data` endpoint becomes deprecated; the ESP8266 + DHT11 sensor (Nó #1 prod) migrates to publish CloudEvents envelopes with `io.sparkedsense.sensor.environmental` SenML records. Hard cutover with `sensor_readings` frozen as a read-only history; backend continues querying both tables for that sensor during the transition window. Existing NFT identity is preserved (transport change only).
+
+#### Code changes shipped in this phase
+
+1. **Mode rename** — `unsigned_dev` → `unverified` across TypeScript types, backend mode checks, and UI labels. Wire-protocol marker `signature: "unsigned_dev"` in the envelope is unchanged (it's an event-level property, separate from sensor-level attestation status). Backwards-compat shim `isUnverifiedMode(mode)` accepts both values on read so existing KV records continue to work without an immediate migration.
+
+#### Still pending in Phase 16
+
+- `POST /server/sensors/:id/mint` endpoint (server-side mint via the existing Solana wallet).
+- "Mint NFT" button on the sensor detail page wired to the new endpoint.
+- Dataset metadata fields for mixed-signature composition.
+- ESP8266 firmware ADR-010 publisher (the migration described in ADR-015).
+- One-time KV migration to rewrite legacy `mode: 'unsigned_dev'` rows as `mode: 'unverified'` and drop the backwards-compat shim.
 
 ### Phase 15 addendum — persist `verify_jwt=false` for device ingestion (24 Apr 2026)
 
