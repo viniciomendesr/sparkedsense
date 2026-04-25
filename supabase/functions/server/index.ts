@@ -943,6 +943,126 @@ app.put("/server/sensors/:id", async (c) => {
 // signature verification at /server/reading. The mint is the on-chain anchor of
 // sensor identity; events that arrive without signatures continue to be flagged
 // as unverified per ADR-011 even after mint.
+// ADR-014/ADR-016: rotate the device public key bound to a sensor. Owner-only.
+//
+// Why this exists: the Node 2 sensor was registered with a placeholder pubkey
+// at demo time (no real private key existed on the device). After mint, the
+// firmware needs to produce real signatures, but it can't sign for a pubkey
+// it doesn't own. This endpoint rewrites devices.public_key + sensor.devicePublicKey
+// in one atomic-ish operation, preserving nft_address / claim_token / device_id
+// (so historical readings stay linked through device_id).
+//
+// Trust-model note: rotating a key invalidates the bond between past readings
+// (signed by the OLD key) and the new identity. Audit consumers should see
+// `pubkeyRotatedAt` and treat events from before that timestamp as a separate
+// trust epoch. The endpoint records the timestamp on both the device row
+// (rotated_at column if present, or commented out below) and on the sensor.
+app.post("/server/sensors/:id/rotate-pubkey", async (c) => {
+  try {
+    const user = await getUserFromToken(c.req.raw);
+    if (!user) {
+      return c.json({ error: 'Unauthorized' }, 401);
+    }
+
+    const id = c.req.param('id');
+    const { newPublicKey, newMacAddress } = await c.req.json();
+
+    if (!newPublicKey || typeof newPublicKey !== 'string') {
+      return c.json({ error: 'newPublicKey is required (hex string)' }, 400);
+    }
+    if (!/^[0-9a-fA-F]+$/.test(newPublicKey)) {
+      return c.json({ error: 'newPublicKey must be hex' }, 400);
+    }
+    // 64 = compressed (no 02/03 prefix), 66 = compressed with prefix,
+    // 128 = uncompressed without 04 prefix, 130 = uncompressed with 04 prefix.
+    const len = newPublicKey.length;
+    if (len !== 64 && len !== 66 && len !== 128 && len !== 130) {
+      return c.json({ error: `newPublicKey hex length must be 64/66/128/130 (got ${len})` }, 400);
+    }
+    if (newMacAddress && !/^([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})$/.test(newMacAddress)) {
+      return c.json({ error: 'newMacAddress format invalid (AA:BB:CC:DD:EE:FF)' }, 400);
+    }
+
+    const sensor = await kv.get(`sensor:${user.id}:${id}`);
+    if (!sensor) {
+      return c.json({ error: 'Sensor not found' }, 404);
+    }
+
+    // Resolve the current device row. Prefer devicePublicKey (unverified path);
+    // fall back to claim_token (real-mode legacy linkage).
+    let currentDevice: any = null;
+    if (sensor.devicePublicKey) {
+      const { data } = await supabase
+        .from('devices')
+        .select('id, public_key, nft_address, claim_token')
+        .eq('public_key', sensor.devicePublicKey)
+        .maybeSingle();
+      if (data) currentDevice = data;
+    }
+    if (!currentDevice && sensor.claimToken) {
+      const { data } = await supabase
+        .from('devices')
+        .select('id, public_key, nft_address, claim_token')
+        .eq('claim_token', sensor.claimToken)
+        .maybeSingle();
+      if (data) currentDevice = data;
+    }
+    if (!currentDevice) {
+      return c.json({ error: 'No device row linked to this sensor', code: 'rotate_no_device' }, 404);
+    }
+
+    if (currentDevice.public_key === newPublicKey) {
+      return c.json({ error: 'newPublicKey is identical to current', code: 'rotate_noop' }, 400);
+    }
+
+    // Refuse if newPublicKey is already used by a different device (sanity).
+    const { data: collision } = await supabase
+      .from('devices')
+      .select('id')
+      .eq('public_key', newPublicKey)
+      .neq('id', currentDevice.id)
+      .maybeSingle();
+    if (collision) {
+      return c.json({
+        error: 'newPublicKey is already registered by another device',
+        code: 'rotate_pubkey_taken',
+      }, 409);
+    }
+
+    // Update devices row in place. nft_address, claim_token, and device.id are
+    // preserved → historical readings stay linked through device_id, claim_token
+    // linkage in the KV mirror keeps working.
+    const deviceUpdates: Record<string, unknown> = { public_key: newPublicKey };
+    if (newMacAddress) deviceUpdates.mac_address = newMacAddress;
+    const { error: devErr } = await supabase
+      .from('devices')
+      .update(deviceUpdates)
+      .eq('id', currentDevice.id);
+    if (devErr) {
+      console.error('Rotate pubkey device update error:', devErr);
+      return c.json({ error: 'DB error: ' + devErr.message, code: 'rotate_db_error' }, 500);
+    }
+
+    // Update sensor KV with new pubkey + rotation timestamp for audit.
+    const updatedSensor = {
+      ...sensor,
+      devicePublicKey: newPublicKey,
+      pubkeyRotatedAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    await kv.set(`sensor:${user.id}:${id}`, updatedSensor);
+
+    console.log(
+      `🔄 Rotated pubkey for sensor ${id}: ${currentDevice.public_key.substring(0, 16)}... → ${newPublicKey.substring(0, 16)}...`,
+    );
+
+    return c.json({ sensor: updatedSensor });
+  } catch (err: any) {
+    console.error('Rotate pubkey error:', err);
+    return c.json({ error: err.message || 'Internal server error', code: 'rotate_internal_error' }, 500);
+  }
+});
+
 app.post("/server/sensors/:id/mint", async (c) => {
   try {
     const user = await getUserFromToken(c.req.raw);

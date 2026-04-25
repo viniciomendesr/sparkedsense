@@ -10,6 +10,9 @@ export interface Sensor {
   claimToken?: string;
   walletPublicKey?: string;
   devicePublicKey?: string;
+  // ADR-014/ADR-016: timestamp of the most recent device-key rotation. Audit
+  // consumers should treat events before this as a separate trust epoch.
+  pubkeyRotatedAt?: string;
   thumbnailUrl?: string;
   location?: string;
   latitude?: number;

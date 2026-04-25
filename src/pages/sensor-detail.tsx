@@ -42,7 +42,8 @@ import {
   Pencil,
   RefreshCw,
   Download,
-  Hexagon
+  Hexagon,
+  KeyRound
 } from 'lucide-react';
 import { SensorChart } from '../components/sensor-chart';
 import { useAuth } from '../lib/auth-context';
@@ -53,6 +54,7 @@ import { verifyMerkleRoot, computeMerkleRoot } from '../lib/merkle';
 import { formatDataSize } from '../lib/format';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { EditSensorDialog } from '../components/edit-sensor-dialog';
+import { RotatePubkeyDialog } from '../components/rotate-pubkey-dialog';
 
 interface SensorDetailPageProps {
   sensor: Sensor;
@@ -93,7 +95,9 @@ export function SensorDetailPage({
   // refetch. Dashboard re-polls and re-renders the parent within ~3s, but the
   // detail page reads the badge from this state in the meantime.
   const [currentMode, setCurrentMode] = useState<Sensor['mode']>(sensor.mode);
+  const [currentDevicePubkey, setCurrentDevicePubkey] = useState<string | undefined>(sensor.devicePublicKey);
   const [minting, setMinting] = useState(false);
+  const [rotateDialogOpen, setRotateDialogOpen] = useState(false);
 
   const handleMintNFT = async () => {
     if (!accessToken) return;
@@ -768,6 +772,18 @@ export function SensorDetailPage({
                 {minting ? 'Minting…' : 'Mint NFT'}
               </Button>
             )}
+            {currentDevicePubkey && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setRotateDialogOpen(true)}
+                className="border-warning/50 text-warning hover:bg-warning/10"
+                title="Rebind this sensor to a new device public key. Use after firmware change that introduced real signing capability (ADR-014/ADR-016)."
+              >
+                <KeyRound className="w-4 h-4 mr-2" />
+                Rotate Key
+              </Button>
+            )}
             <Button
               variant="outline"
               size="sm"
@@ -1372,6 +1388,16 @@ export function SensorDetailPage({
         onSaved={(updated) => {
           setSensorName(updated.name);
           setSensorDescription(updated.description);
+        }}
+      />
+
+      {/* Rotate Pubkey Dialog */}
+      <RotatePubkeyDialog
+        open={rotateDialogOpen}
+        onOpenChange={setRotateDialogOpen}
+        sensor={{ ...sensor, devicePublicKey: currentDevicePubkey }}
+        onRotated={(updated) => {
+          setCurrentDevicePubkey(updated.devicePublicKey);
         }}
       />
     </div>

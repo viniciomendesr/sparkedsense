@@ -165,6 +165,27 @@ export const sensorAPI = {
     return data.sensor as Sensor;
   },
 
+  // ADR-014/ADR-016: rotate the device public key bound to a sensor. Used when
+  // the firmware acquires real signing capability and needs the platform to
+  // recognize its new pubkey while preserving the existing NFT identity.
+  rotatePubkey: async (
+    id: string,
+    args: { newPublicKey: string; newMacAddress?: string },
+    accessToken: string,
+  ) => {
+    const response = await fetch(`${API_BASE}/sensors/${id}/rotate-pubkey`, {
+      method: "POST",
+      headers: getAuthHeaders(accessToken),
+      body: JSON.stringify(args),
+    });
+    if (!response.ok) {
+      const error = await response.text();
+      throw new Error(`Failed to rotate pubkey: ${error}`);
+    }
+    const data = await response.json();
+    return data.sensor as Sensor;
+  },
+
   // ADR-014: deferred mint. Promotes a sensor in `unverified` mode to `real`,
   // attaching nft_address + claim_token. Server wallet pays on devnet.
   mint: async (id: string, accessToken: string) => {
