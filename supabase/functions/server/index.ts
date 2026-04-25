@@ -2305,8 +2305,14 @@ app.post("/server/register-device", async (c) => {
   }
 });
 
-// POST /server/sensor-data (no user JWT required)
+// POST /server/sensor-data (no user JWT required) — DEPRECATED per ADR-015.
 // {nftAddress, signature: {r, s}, payload: {humidity, temperature, timestamp}}
+//
+// New firmware should publish to /server/reading (ADR-010 envelope) instead.
+// This endpoint stays accepting writes for ~7 days after the firmware migration
+// to absorb any device that flashed late (rollback safety). After that, returns
+// 410 Gone. Reads via internal helpers continue to work indefinitely; the
+// sensor_readings table is frozen as read-only history.
 app.post("/server/sensor-data", async (c) => {
   try {
     const body = await c.req.json();
@@ -2315,6 +2321,12 @@ app.post("/server/sensor-data", async (c) => {
     if (!nftAddress || !signature || !payload) {
       return c.json({ error: 'Missing nftAddress, signature, or payload' }, 400);
     }
+
+    // ADR-015 deprecation telemetry — surface every legacy write so we know
+    // when the firmware fleet has finished migrating. Header on the response
+    // also signals to operators inspecting the network.
+    console.warn(`⚠️  Legacy /server/sensor-data POST (ADR-015 deprecated) — nft=${nftAddress.substring(0, 16)}...`);
+    c.header('X-Sparked-Deprecation', 'use /server/reading per ADR-015');
 
     // Fetch device by nftAddress
     const { data: device, error: fetchError } = await supabase
