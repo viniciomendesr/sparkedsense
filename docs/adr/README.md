@@ -30,3 +30,4 @@ Each ADR documents a single architectural decision with its context, rationale, 
 | [013](013-edge-function-jwt-disabled-for-device-ingestion.md) | Disable Supabase JWT gateway on the `server` Edge Function | Accepted | 2026-04-24 | 2026-04-24 |
 | [014](014-deferred-nft-minting.md) | Deferred NFT minting (`unverified` as the default sensor state) | Accepted | 2026-04-25 | 2026-04-25 |
 | [015](015-unify-ingestion-on-adr-010.md) | Unify ingestion on `/server/reading` (ADR-010 envelope) | Accepted | 2026-04-25 | 2026-04-25 |
+| [016](016-user-paid-mint-on-mainnet.md) | User-paid NFT mint on mainnet (deferred from ADR-014) | Proposed | 2026-04-25 | 2026-04-25 |

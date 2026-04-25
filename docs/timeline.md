@@ -401,14 +401,20 @@ Two new ADRs formalise the direction:
 #### Code changes shipped in this phase
 
 1. **Mode rename** — `unsigned_dev` → `unverified` across TypeScript types, backend mode checks, and UI labels. Wire-protocol marker `signature: "unsigned_dev"` in the envelope is unchanged (it's an event-level property, separate from sensor-level attestation status). Backwards-compat shim `isUnverifiedMode(mode)` accepts both values on read so existing KV records continue to work without an immediate migration.
+2. **Mint endpoint + UI** — `POST /server/sensors/:id/mint` accepts owner-authenticated calls, validates the sensor is in `unverified` mode, generates simulated `nft_address`/`claim_token`/`tx_signature` (same pattern as Step 2 of `/server/register-device`), and persists `mintedAt`. Sensor detail page renders a "Mint NFT" button when `mode === 'unverified'`; clicking promotes the sensor to `real` mode. Idempotent: if the device row already has an `nft_address`, the existing identity is reused.
+3. **Dataset signature-composition metadata** — `POST /server/datasets` now stamps each dataset with `mintStatus` (sensor mode at creation) and, for `unverified` sources, `signatureComposition: { verified, unsigned }` computed via two parallel HEAD counts on the `readings` table. Dataset cards on the sensor detail page render an "Unverified Source" badge with a tooltip listing the breakdown.
+4. **ESP8266 (Nó #1) firmware migrated to ADR-010** — `ESP/ESP.ino` now publishes CloudEvents envelopes to `/server/reading` instead of the legacy `/server/sensor-data` shape. Same secp256k1 keypair, same NFT identity, same DHT11 readings — only the transport changes. Top-level keys are inserted in alphabetical order so `serializeJson` output equals canonical JSON without a runtime sort; SenML records use `n/u/v` order. Signature is hex secp256k1 over canonical JSON of the envelope minus `signature`. Legacy `/server/sensor-data` continues to accept writes (with `X-Sparked-Deprecation` response header and a `console.warn`) for ~7 days as rollback safety per ADR-015.
+5. **One-shot KV migration** — `POST /server/admin/migrate-unverified-mode` (gated by `X-Admin-Migration` header) rewrites legacy `mode: 'unsigned_dev'` KV rows to `'unverified'`. Idempotent. Ran successfully on 2026-04-25: scanned 2 sensor records, 1 candidate, 1 updated.
+
+#### Mainnet mint flow
+
+[ADR-016](adr/016-user-paid-mint-on-mainnet.md) is now `Proposed`, deferring the user-paid mint flow (Solana wallet adapter, mint goes directly to user's wallet, server keeps anchoring role only) until mainnet deployment is on the table. Devnet stays server-paid as ADR-014 specifies.
 
 #### Still pending in Phase 16
 
-- `POST /server/sensors/:id/mint` endpoint (server-side mint via the existing Solana wallet).
-- "Mint NFT" button on the sensor detail page wired to the new endpoint.
-- Dataset metadata fields for mixed-signature composition.
-- ESP8266 firmware ADR-010 publisher (the migration described in ADR-015).
-- One-time KV migration to rewrite legacy `mode: 'unsigned_dev'` rows as `mode: 'unverified'` and drop the backwards-compat shim.
+- **Drop the `isUnverifiedMode()` backwards-compat shim** in `index.ts` once we're confident the KV migration is complete and no other code path references the legacy value. Cheap insurance for now; remove in a future cleanup pass.
+- **Flash Nó #1** with the new firmware. Existing legacy publishes continue working until the device is reflashed; once flashed, `/server/sensor-data` should stop seeing writes from this device.
+- **Flip `/server/sensor-data` to 410 Gone** after ~7 days of zero writes, per ADR-015 cutover plan.
 
 ### Phase 15 addendum — persist `verify_jwt=false` for device ingestion (24 Apr 2026)
 
