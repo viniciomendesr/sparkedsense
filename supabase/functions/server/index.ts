@@ -1292,6 +1292,33 @@ app.post("/server/datasets", async (c) => {
     const end = new Date(endDate);
     const readingsCount = await countSensorReadings(sensorId, sensor, { since: start, until: end });
 
+    // ADR-014: capture the source sensor's attestation status at dataset creation
+    // time. This is metadata only — does not block creation. For unverified
+    // sensors we also break down signed vs unsigned event counts so auditors
+    // know what fraction of the dataset carries cryptographic attestation.
+    const mintStatus: 'real' | 'unverified' | 'mock' =
+      isUnverifiedMode(sensor?.mode) ? 'unverified' : (sensor?.mode === 'mock' ? 'mock' : 'real');
+
+    let signatureComposition: { verified: number; unsigned: number } | undefined;
+    if (mintStatus === 'unverified') {
+      const deviceId = await resolveDeviceIdForUnverified(sensor);
+      if (deviceId) {
+        const baseQ = (q: any) => {
+          let qq = q.eq('device_id', deviceId);
+          if (startDate) qq = qq.gte('time', new Date(startDate).toISOString());
+          if (endDate) qq = qq.lte('time', new Date(endDate).toISOString());
+          return qq;
+        };
+        const unsignedQ = baseQ(supabase.from('readings').select('id', { count: 'exact', head: true })).eq('signature', 'unsigned_dev');
+        const verifiedQ = baseQ(supabase.from('readings').select('id', { count: 'exact', head: true })).neq('signature', 'unsigned_dev');
+        const [{ count: unsignedCount }, { count: verifiedCount }] = await Promise.all([unsignedQ, verifiedQ]);
+        signatureComposition = {
+          verified: verifiedCount ?? 0,
+          unsigned: unsignedCount ?? 0,
+        };
+      }
+    }
+
     const dataset = {
       id,
       name,
@@ -1303,6 +1330,8 @@ app.post("/server/datasets", async (c) => {
       isPublic: isPublic || false,
       createdAt: new Date().toISOString(),
       accessCount: 0,
+      mintStatus,
+      ...(signatureComposition ? { signatureComposition } : {}),
     };
 
     await kv.set(`dataset:${sensorId}:${id}`, dataset);

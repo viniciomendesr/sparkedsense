@@ -18,6 +18,7 @@ import {
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
 import { Switch } from '../components/ui/switch';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../components/ui/tooltip';
 import { generateHistoricalReadings, generateLiveReading } from '../lib/mock-data';
 import { 
   ArrowLeft, 
@@ -1027,6 +1028,25 @@ export function SensorDetailPage({
                           <Badge variant="outline" className="bg-primary/10 text-primary border-primary/30">
                             Public
                           </Badge>
+                        )}
+                        {dataset.mintStatus === 'unverified' && (
+                          <TooltipProvider>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Badge variant="outline" className="bg-warning/20 text-warning border-warning/30 cursor-help">
+                                  Unverified Source
+                                </Badge>
+                              </TooltipTrigger>
+                              <TooltipContent side="top" className="max-w-xs">
+                                <p className="text-sm">
+                                  Created from a sensor in <code>unverified</code> mode (ADR-014). Anchoring works, but auditors should know the composition:{' '}
+                                  {dataset.signatureComposition
+                                    ? `${dataset.signatureComposition.verified} signed events, ${dataset.signatureComposition.unsigned} with the unsigned_dev marker.`
+                                    : 'event-level signature composition not available for this dataset.'}
+                                </p>
+                              </TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
                         )}
                       </div>
                       

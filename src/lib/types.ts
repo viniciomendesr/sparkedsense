@@ -56,6 +56,16 @@ export interface Dataset {
   anchorCluster?: 'devnet' | 'mainnet-beta' | 'testnet';
   anchorMemo?: string;
   anchoredAt?: string;
+  // ADR-014: attestation provenance.
+  // mintStatus = source sensor mode at creation time. Datasets from `unverified`
+  // sensors are still anchorable but auditors should know the composition.
+  mintStatus?: 'real' | 'unverified' | 'mock';
+  // Breakdown of how many events in the dataset were signature-verified vs
+  // arrived with the unsigned_dev wire marker (only emitted for unverified sources).
+  signatureComposition?: {
+    verified: number;
+    unsigned: number;
+  };
 }
 
 export interface MerkleProofStep {
