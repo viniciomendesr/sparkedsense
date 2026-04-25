@@ -443,6 +443,59 @@ app.get("/server/health", (c) => {
   return c.json({ status: "ok" });
 });
 
+// ADR-014 one-shot migration: rewrite legacy KV records where mode='unsigned_dev'
+// to mode='unverified'. Idempotent — running it again is a no-op once converged.
+// Once verified, the isUnverifiedMode() shim can be dropped (search index.ts).
+//
+// Auth: gated by a shared header so it's not accidentally hit by random traffic;
+// the operation only normalizes a name and never destroys data, so a knowledge
+// gate is sufficient for a single-operator project. For multi-tenant deployments
+// upgrade this to admin-role JWT verification.
+app.post("/server/admin/migrate-unverified-mode", async (c) => {
+  if (c.req.header('X-Admin-Migration') !== 'adr-014-mode-rename') {
+    return c.json({ error: 'Missing X-Admin-Migration header' }, 403);
+  }
+
+  try {
+    const { data: rows, error } = await supabase
+      .from('kv_store_4a89e1c9')
+      .select('key, value')
+      .like('key', 'sensor:%');
+
+    if (error) return c.json({ error: error.message }, 500);
+
+    const candidates = (rows ?? []).filter((r: any) => r.value?.mode === 'unsigned_dev');
+    let updated = 0;
+    const failures: Array<{ key: string; error: string }> = [];
+
+    for (const r of candidates as Array<{ key: string; value: any }>) {
+      const newValue = { ...r.value, mode: 'unverified' };
+      const { error: updErr } = await supabase
+        .from('kv_store_4a89e1c9')
+        .update({ value: newValue })
+        .eq('key', r.key);
+      if (updErr) {
+        console.error(`Migration failed for ${r.key}:`, updErr.message);
+        failures.push({ key: r.key, error: updErr.message });
+        continue;
+      }
+      updated++;
+    }
+
+    console.log(`✅ ADR-014 KV migration: scanned=${rows?.length ?? 0} candidates=${candidates.length} updated=${updated}`);
+
+    return c.json({
+      scanned: rows?.length ?? 0,
+      candidates: candidates.length,
+      updated,
+      failures,
+    });
+  } catch (err: any) {
+    console.error('Migration error:', err);
+    return c.json({ error: err.message || 'Migration failed' }, 500);
+  }
+});
+
 // ======================
 // Authentication Routes
 // ======================
