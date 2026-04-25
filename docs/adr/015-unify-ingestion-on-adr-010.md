@@ -69,7 +69,7 @@ For at least one release after the firmware update, `/server/sensor-data` will k
 
 ## Implementation
 
-1. Implement firmware ADR-010 publisher for ESP8266 + DHT11 (mirror of `node2_fase4_kws_publisher.ino` structure but with SenML environmental envelope). Keep current pubkey.
+1. Implement firmware ADR-010 publisher for ESP8266 + DHT11 (mirror of [`ESP/esp32s3/esp32s3.ino`](../../ESP/esp32s3/esp32s3.ino) structure but with SenML environmental envelope). Keep current pubkey.
 2. Local test: validate envelope shape + signature using the existing backend's `verifyEnvelopeSignature` against captured payloads.
 3. Flash Nó #1, observe parallel publishes (legacy + envelope) for ~24h, compare row counts and timestamps.
 4. Stop legacy publishes (firmware-side flag).
@@ -82,4 +82,4 @@ For at least one release after the firmware update, `/server/sensor-data` will k
 - [ADR-003](003-secp256k1-signature-verification.md) — original signature/transport contract (deprecated for new ingestion).
 - [ADR-010](010-sensor-agnostic-ingestion-envelope.md) — envelope shape that becomes universal.
 - [ADR-014](014-deferred-nft-minting.md) — deferred mint flow that depends on this unification.
-- Node 2 reference firmware: `IC_TF_off/MVPs/Demo-Claro/node2_fase4_kws_publisher/node2_fase4_kws_publisher.ino`.
+- Node 2 reference firmware: [`ESP/esp32s3/esp32s3.ino`](../../ESP/esp32s3/esp32s3.ino).

@@ -103,4 +103,4 @@ This transition is reversible in the sense that the device identity (pubkey) is 
 - [ADR-010](010-sensor-agnostic-ingestion-envelope.md) — envelope shape that carries the `unsigned_dev` marker
 - [ADR-011](011-unsigned-dev-bypass-for-unported-devices.md) — backend acceptance of the marker at `/server/reading`
 - Demo plan: `IC_TF_off/MVPs/Demo-Claro/2026-04-22_plano_demo_claro_v3.md`
-- Node 2 firmware: `IC_TF_off/MVPs/Demo-Claro/node2_fase4_kws_publisher.ino`
+- Node 2 firmware: [`ESP/esp32s3/esp32s3.ino`](../../ESP/esp32s3/esp32s3.ino) — moved into the platform repo on 2026-04-25 (was previously `IC_TF_off/MVPs/Demo-Claro/node2_fase4_kws_publisher/`)
