@@ -6,6 +6,7 @@ import { publicAPI } from '../lib/api';
 import { Sensor } from '../lib/types';
 import { SensorCard } from '../components/sensor-card';
 import { supabase } from '../utils/supabase/client';
+import { m } from '../paraglide/messages';
 
 export default function PublicSensorsPage() {
   const navigate = useNavigate();
@@ -102,11 +103,11 @@ export default function PublicSensorsPage() {
             </div>
             <div className="flex items-center gap-3">
               <h1 className="text-xl sm:text-2xl" style={{ fontWeight: 600, color: 'var(--text-primary)' }}>
-                Public sensors
+                {m.public_sensors_title()}
               </h1>
               {!loading && sensors.length > 0 && (
                 <span className="text-xs px-2 py-0.5 rounded-full bg-primary/10 text-primary">
-                  {sensors.length} {sensors.length === 1 ? 'sensor' : 'sensors'}
+                  {sensors.length} {sensors.length === 1 ? m.public_sensors_count_singular() : m.public_sensors_count_plural()}
                 </span>
               )}
             </div>
@@ -116,8 +117,7 @@ export default function PublicSensorsPage() {
             maxWidth: '600px',
             lineHeight: '1.6',
           }}>
-            Real-time IoT sensor data verified on the Solana blockchain.
-            Public datasets available for audit and acquisition.
+            {m.public_sensors_subtitle()}
           </p>
         </div>
       </div>
@@ -132,7 +132,7 @@ export default function PublicSensorsPage() {
               </div>
               <div>
                 <h3 className="mb-2" style={{ fontWeight: 600, color: 'var(--text-primary)' }}>
-                  Unable to load public sensors
+                  {m.public_sensors_error_title()}
                 </h3>
                 <p className="text-sm mb-4" style={{ color: 'var(--text-secondary)' }}>
                   {fetchError}
@@ -141,7 +141,7 @@ export default function PublicSensorsPage() {
                   className="px-4 py-2 bg-primary text-primary-foreground rounded-md text-sm hover:opacity-90"
                   onClick={loadPublicSensors}
                 >
-                  Try again
+                  {m.public_sensors_error_retry()}
                 </button>
               </div>
             </div>
@@ -160,13 +160,13 @@ export default function PublicSensorsPage() {
           <Card className="p-12 text-center max-w-lg mx-auto">
             <Database className="w-12 h-12 mx-auto mb-4" style={{ color: 'var(--muted-foreground)' }} />
             <h3 style={{ color: 'var(--text-primary)', marginBottom: '8px' }}>
-              No public sensors available
+              {m.public_sensors_empty_title()}
             </h3>
             <p style={{ color: 'var(--text-secondary)', marginBottom: '12px' }}>
-              Public sensors will appear here once sensor owners mark their datasets as public.
+              {m.public_sensors_empty_message()}
             </p>
             <p style={{ color: 'var(--text-muted)', fontSize: '0.875rem' }}>
-              Check back later or register your own sensor to contribute to the public collection.
+              {m.public_sensors_empty_hint()}
             </p>
           </Card>
         ) : (
@@ -194,8 +194,7 @@ export default function PublicSensorsPage() {
         <div className="mt-8 flex items-start gap-3 p-4 rounded-lg border border-border/50 bg-muted/20">
           <Mail className="w-4 h-4 mt-0.5 shrink-0" style={{ color: 'var(--text-muted)' }} />
           <p className="text-xs" style={{ color: 'var(--text-muted)', lineHeight: '1.5' }}>
-            All datasets are available for acquisition through data negotiation.
-            Click any sensor to view its data feed and public datasets, or contact the sensor owner for access details.
+            {m.public_sensors_info()}
           </p>
         </div>
       </div>

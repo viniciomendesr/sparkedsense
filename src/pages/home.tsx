@@ -91,27 +91,27 @@ export function HomePage({ onGetStarted }: HomePageProps) {
   };
 
   const steps = [
-    { number: 1, title: 'Sign In', description: 'Create your account' },
-    { number: 2, title: 'Register', description: 'Register IoT sensors' },
-    { number: 3, title: 'Stream', description: 'Send verifiable data' },
-    { number: 4, title: 'Audit', description: 'Verify on blockchain' },
+    { number: 1, title: m.home_steps_1_title(), description: m.home_steps_1_desc() },
+    { number: 2, title: m.home_steps_2_title(), description: m.home_steps_2_desc() },
+    { number: 3, title: m.home_steps_3_title(), description: m.home_steps_3_desc() },
+    { number: 4, title: m.home_steps_4_title(), description: m.home_steps_4_desc() },
   ];
 
   const features = [
     {
       icon: <Wifi className="w-6 h-6" />,
-      title: 'Real-time streaming',
-      description: 'Live sensor data with cryptographic verification at the device level',
+      title: m.home_features_realtime_title(),
+      description: m.home_features_realtime_desc(),
     },
     {
       icon: <Shield className="w-6 h-6" />,
-      title: 'Blockchain anchoring',
-      description: 'Dataset integrity proofs anchored on Solana for immutable verification',
+      title: m.home_features_anchor_title(),
+      description: m.home_features_anchor_desc(),
     },
     {
       icon: <Database className="w-6 h-6" />,
-      title: 'Decentralized storage',
-      description: 'No centralized cloud dependency—full data provenance and ownership',
+      title: m.home_features_storage_title(),
+      description: m.home_features_storage_desc(),
     },
   ];
 
@@ -371,7 +371,7 @@ export function HomePage({ onGetStarted }: HomePageProps) {
       <section className="px-4 sm:px-6 py-12 sm:py-16 border-t border-border bg-card/30">
         <div className="max-w-6xl mx-auto">
           <h2 className="text-center mb-8 sm:mb-12 text-xl sm:text-2xl" style={{ fontWeight: 600, color: 'var(--text-primary)' }}>
-            How it works
+            {m.home_steps_title()}
           </h2>
 
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 sm:gap-6">
@@ -403,10 +403,10 @@ export function HomePage({ onGetStarted }: HomePageProps) {
       <section className="px-4 sm:px-6 py-12 sm:py-16">
         <div className="max-w-6xl mx-auto">
           <h2 className="text-center mb-4 text-xl sm:text-2xl" style={{ fontWeight: 600, color: 'var(--text-primary)' }}>
-            Open Infrastructure for verifiable physical data
+            {m.home_features_title()}
           </h2>
           <p className="text-center mb-8 sm:mb-12 max-w-2xl mx-auto text-sm sm:text-base" style={{ color: 'var(--text-secondary)' }}>
-            Sparked Sense bridges IoT devices, decentralized networks, and open environmental intelligence systems
+            {m.home_features_subtitle()}
           </p>
           
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -769,17 +769,17 @@ export function HomePage({ onGetStarted }: HomePageProps) {
       <section className="px-4 sm:px-6 py-12 sm:py-16 border-t border-border bg-card/30">
         <div className="max-w-4xl mx-auto text-center">
           <h2 className="mb-4 text-xl sm:text-2xl" style={{ fontWeight: 600, color: 'var(--text-primary)' }}>
-            Ready to get started?
+            {m.home_cta_title()}
           </h2>
           <p className="mb-8 text-sm sm:text-base" style={{ color: 'var(--text-secondary)' }}>
-            Connect your wallet and register your first sensor in minutes
+            {m.home_cta_subtitle()}
           </p>
-          <Button 
+          <Button
             onClick={onGetStarted}
             size="lg"
             className="bg-primary text-primary-foreground"
           >
-            Get started
+            {m.home_cta_button()}
           </Button>
         </div>
       </section>

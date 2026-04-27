@@ -10,6 +10,7 @@ import { Label } from '../components/ui/label';
 import { Copy, Check, CheckCircle2, ExternalLink, Shield, ArrowLeft, Mail, Info, Download, Upload, XCircle, Loader2, ChevronLeft, ChevronRight, Search } from 'lucide-react';
 import { publicAPI, datasetAPI } from '../lib/api';
 import { useAuth } from '../lib/auth-context';
+import { m } from '../paraglide/messages';
 import { toast } from 'sonner@2.0.3';
 import {
   computeMerkleRoot,
@@ -451,7 +452,7 @@ export function AuditPage({ dataset: propDataset, sensor: propSensor, onBack }: 
               <Info className="w-5 h-5 text-primary flex-shrink-0 mt-0.5" />
               <div>
                 <p style={{ fontSize: '0.875rem', color: 'var(--text-primary)', marginBottom: '4px' }}>
-                  <strong>Public Dataset</strong>
+                  <strong>{m.audit_public_dataset()}</strong>
                 </p>
                 <p style={{ fontSize: '0.875rem', color: 'var(--text-secondary)', marginBottom: '8px' }}>
                   You can download the full JSON export and recompute its Merkle root locally. If you need direct access to the owner (for commercial use, licensing, or questions), request it below.
@@ -691,7 +692,7 @@ export function AuditPage({ dataset: propDataset, sensor: propSensor, onBack }: 
               <Input
                 value={proofSearch}
                 onChange={(e) => { setProofSearch(e.target.value); setProofPage(1); }}
-                placeholder="Filter by timestamp, value or hash prefix..."
+                placeholder={m.audit_filter_placeholder()}
                 className="pl-10 bg-input border-border"
               />
             </div>
@@ -699,10 +700,10 @@ export function AuditPage({ dataset: propDataset, sensor: propSensor, onBack }: 
             <div className="rounded-lg border border-border overflow-hidden mb-4">
               <div className="grid grid-cols-[48px_minmax(0,2fr)_minmax(0,1fr)_minmax(0,2fr)_100px] gap-3 px-4 py-2 bg-muted/40 text-xs uppercase tracking-wide" style={{ color: 'var(--text-muted)' }}>
                 <div>#</div>
-                <div>Timestamp</div>
-                <div>Value</div>
-                <div>Computed hash</div>
-                <div className="text-right">Action</div>
+                <div>{m.audit_col_timestamp()}</div>
+                <div>{m.audit_col_value()}</div>
+                <div>{m.audit_col_hash()}</div>
+                <div className="text-right">{m.audit_col_action()}</div>
               </div>
               {pageRows.length === 0 && (
                 <div className="px-4 py-6 text-center text-sm" style={{ color: 'var(--text-muted)' }}>

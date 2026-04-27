@@ -23,6 +23,7 @@ import { SensorChart } from '../components/sensor-chart';
 import { publicAPI } from '../lib/api';
 import { formatDataSize } from '../lib/format';
 import { verifyMerkleRoot } from '../lib/merkle';
+import { m } from '../paraglide/messages';
 import { generateHistoricalReadings, generateLiveReading } from '../lib/mock-data';
 import { ImageWithFallback } from '../components/figma/ImageWithFallback';
 import { Label } from '../components/ui/label';
@@ -476,19 +477,19 @@ export function PublicSensorDetailPage({
               </Badge>
             </div>
             <p className="text-sm mb-4" style={{ color: 'var(--text-muted)' }}>
-              Showing readings from the last 1 hour (default system range)
+              {m.psd_showing_last_hour()}
             </p>
             {lastHourReadings.length === 0 && sensor.mode === 'real' ? (
               <div className="py-12 text-center">
                 <Clock className="w-12 h-12 text-muted-foreground mx-auto mb-4 opacity-50" />
                 <h4 className="mb-2" style={{ fontWeight: 600, color: 'var(--text-primary)' }}>
-                  No live data available
+                  {m.psd_no_live_data_title()}
                 </h4>
                 <p style={{ color: 'var(--text-secondary)' }}>
-                  Waiting for the device to send readings.
+                  {m.psd_no_live_data_msg()}
                 </p>
                 <p className="text-sm mt-2" style={{ color: 'var(--text-muted)' }}>
-                  Make sure the physical sensor is powered on and connected.
+                  {m.psd_no_live_data_hint()}
                 </p>
               </div>
             ) : (
@@ -574,10 +575,10 @@ export function PublicSensorDetailPage({
               <div className="max-w-md mx-auto">
                 <Database className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
                 <h3 className="mb-2" style={{ fontWeight: 600, color: 'var(--text-primary)' }}>
-                  No public datasets yet
+                  {m.psd_no_datasets_title()}
                 </h3>
                 <p style={{ color: 'var(--text-secondary)' }}>
-                  This sensor doesn't have any public datasets available for audit yet.
+                  {m.psd_no_datasets_msg()}
                 </p>
               </div>
             </Card>
@@ -649,7 +650,7 @@ export function PublicSensorDetailPage({
                               title={`Anchored on Solana ${dataset.anchorCluster ?? 'devnet'}`}
                             >
                               <Shield className="w-3 h-3 mr-2" />
-                              View onchain anchor
+                              {m.psd_view_onchain_anchor()}
                               <ExternalLink className="w-3 h-3 ml-2" />
                             </Button>
                           )}

@@ -1,4 +1,5 @@
 import { ExternalLink } from 'lucide-react';
+import { m } from '../paraglide/messages';
 
 export function Footer() {
   return (
@@ -6,23 +7,23 @@ export function Footer() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
         <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
           <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
-            © 2025 Sparked Sense. An open infrastructure for verifiable physical data.
+            {m.footer_copy()}
           </p>
           <div className="flex items-center gap-6">
-            <a 
-              href="#" 
+            <a
+              href="#"
               className="text-sm hover:text-primary transition-colors flex items-center gap-1"
               style={{ color: 'var(--text-secondary)' }}
             >
-              Documentation
+              {m.footer_documentation()}
               <ExternalLink className="w-3 h-3" />
             </a>
-            <a 
-              href="#" 
+            <a
+              href="#"
               className="text-sm hover:text-primary transition-colors flex items-center gap-1"
               style={{ color: 'var(--text-secondary)' }}
             >
-              GitHub
+              {m.footer_github()}
               <ExternalLink className="w-3 h-3" />
             </a>
           </div>

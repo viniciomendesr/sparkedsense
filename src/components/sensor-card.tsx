@@ -6,6 +6,7 @@ import { Activity, Eye, EyeOff, Lock, AlertCircle, Calendar, Clock, Hexagon, Map
 import { ImageWithFallback } from './figma/ImageWithFallback';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from './ui/tooltip';
 import { formatDataSize } from '../lib/format';
+import { m } from '../paraglide/messages';
 
 interface SensorCardProps {
   sensor: Sensor;
@@ -22,9 +23,15 @@ export function SensorCard({ sensor, liveData, onViewDetails, showMiniSparkline 
   };
 
   const statusLabels = {
-    active: 'Active',
-    inactive: 'Inactive',
-    reconnecting: 'Reconnecting',
+    active: m.sensor_status_active(),
+    inactive: m.sensor_status_inactive(),
+    reconnecting: m.sensor_status_reconnecting(),
+  };
+
+  const visibilityLabels = {
+    public: m.sensor_visibility_public(),
+    private: m.sensor_visibility_private(),
+    partial: m.sensor_visibility_partial(),
   };
 
   const visibilityIcons = {
@@ -46,7 +53,7 @@ export function SensorCard({ sensor, liveData, onViewDetails, showMiniSparkline 
   };
 
   const formatDate = (date: Date | string | undefined) => {
-    if (!date) return 'N/A';
+    if (!date) return m.sensor_field_na();
     const dateObj = typeof date === 'string' ? new Date(date) : date;
     return dateObj.toLocaleDateString();
   };
@@ -115,12 +122,12 @@ export function SensorCard({ sensor, liveData, onViewDetails, showMiniSparkline 
           <Badge variant="outline" className="border-border">
             <div className="flex items-center gap-1.5">
               {visibilityIcons[sensor.visibility]}
-              {sensor.visibility.charAt(0).toUpperCase() + sensor.visibility.slice(1)}
+              {visibilityLabels[sensor.visibility]}
             </div>
           </Badge>
           {sensor.mode === 'real' ? (
             <Badge variant="outline" className="bg-accent/20 text-accent border-accent/30">
-              Real Data
+              {m.sensor_mode_real_data()}
             </Badge>
           ) : sensor.mode === 'unverified' ? (
             <TooltipProvider>
@@ -129,20 +136,20 @@ export function SensorCard({ sensor, liveData, onViewDetails, showMiniSparkline 
                   <div>
                     <Badge variant="outline" className="bg-warning/20 text-warning border-warning/30 cursor-help">
                       <ShieldAlert className="w-3 h-3 mr-1" />
-                      Unverified
+                      {m.sensor_mode_unverified()}
                     </Badge>
                   </div>
                 </TooltipTrigger>
                 <TooltipContent side="top" className="max-w-xs">
                   <p className="text-sm">
-                    Physical device registered but not yet minted as an NFT on Solana. Readings are stored and can be inspected, but identity attestation is deferred until the owner triggers the mint (ADR-014). Events without a valid signature carry the <code>unsigned_dev</code> wire marker and are not eligible for on-chain anchoring.
+                    {m.sensor_mode_unverified_tooltip()}
                   </p>
                 </TooltipContent>
               </Tooltip>
             </TooltipProvider>
           ) : (
             <Badge variant="outline" className="bg-secondary/20 text-secondary border-secondary/30">
-              Mock Data
+              {m.sensor_mode_mock_data()}
             </Badge>
           )}
           {sensor.mode !== 'unverified' && (
@@ -152,13 +159,13 @@ export function SensorCard({ sensor, liveData, onViewDetails, showMiniSparkline 
                   <div>
                     <Badge variant="outline" className="bg-secondary/20 text-secondary border-secondary/30 cursor-help">
                       <Hexagon className="w-3 h-3 mr-1" />
-                      NFT Sensor
+                      {m.sensor_mode_nft()}
                     </Badge>
                   </div>
                 </TooltipTrigger>
                 <TooltipContent side="top" className="max-w-xs">
                   <p className="text-sm">
-                    This sensor is registered as an NFT on the Solana blockchain, ensuring verifiable ownership and provenance.
+                    {m.sensor_mode_nft_tooltip()}
                   </p>
                 </TooltipContent>
               </Tooltip>
@@ -172,7 +179,7 @@ export function SensorCard({ sensor, liveData, onViewDetails, showMiniSparkline 
             <div className="flex items-center gap-1.5 mb-1">
               <Calendar className="w-3 h-3 text-muted-foreground" />
               <span className="text-xs" style={{ color: 'var(--text-muted)' }}>
-                Created
+                {m.sensor_field_created()}
               </span>
             </div>
             <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
@@ -183,7 +190,7 @@ export function SensorCard({ sensor, liveData, onViewDetails, showMiniSparkline 
             <div className="flex items-center gap-1.5 mb-1">
               <Clock className="w-3 h-3 text-muted-foreground" />
               <span className="text-xs" style={{ color: 'var(--text-muted)' }}>
-                Updated
+                {m.sensor_field_updated()}
               </span>
             </div>
             <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
@@ -198,7 +205,7 @@ export function SensorCard({ sensor, liveData, onViewDetails, showMiniSparkline 
             <div className="flex items-center gap-2">
               <Activity className="w-4 h-4 text-primary" />
               <span className="text-sm" style={{ color: 'var(--text-secondary)' }}>
-                Latest Reading
+                {m.sensor_card_latest_reading()}
               </span>
             </div>
             <div className="text-right">
@@ -218,7 +225,7 @@ export function SensorCard({ sensor, liveData, onViewDetails, showMiniSparkline 
             <div className="p-3 rounded-lg bg-primary/5 border border-primary/10 text-center">
               <div className="flex items-center justify-center gap-1.5 mb-1">
                 <Database className="w-3 h-3 text-primary/60" />
-                <span className="text-xs uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>Stored</span>
+                <span className="text-xs uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>{m.sensor_card_stored()}</span>
               </div>
               <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
                 {formatDataSize(sensor.totalDataBytes ?? 0)}
@@ -227,7 +234,7 @@ export function SensorCard({ sensor, liveData, onViewDetails, showMiniSparkline 
             <div className="p-3 rounded-lg bg-primary/5 border border-primary/10 text-center">
               <div className="flex items-center justify-center gap-1.5 mb-1">
                 <Hash className="w-3 h-3 text-primary/60" />
-                <span className="text-xs uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>Readings</span>
+                <span className="text-xs uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>{m.sensor_card_readings()}</span>
               </div>
               <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
                 {(sensor.totalReadingsCount ?? 0).toLocaleString()}
@@ -263,7 +270,7 @@ export function SensorCard({ sensor, liveData, onViewDetails, showMiniSparkline 
           onClick={() => onViewDetails(sensor)}
           className="w-full bg-primary text-primary-foreground"
         >
-          View Details
+          {m.sensor_card_view_details()}
         </Button>
       </div>
     </Card>
