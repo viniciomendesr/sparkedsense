@@ -1,7 +1,7 @@
 import { useNavigate } from 'react-router-dom';
 import { Card } from '../components/ui/card';
 import { Badge } from '../components/ui/badge';
-import { ArrowRight, Zap, Cpu } from 'lucide-react';
+import { ArrowRight, Radar, Cpu } from 'lucide-react';
 import { m } from '../paraglide/messages';
 
 export default function InsedgeLandingPage() {
@@ -67,11 +67,7 @@ export default function InsedgeLandingPage() {
           >
             <div className="flex items-start gap-4">
               <div className="w-12 h-12 rounded-lg bg-primary/20 flex items-center justify-center flex-shrink-0">
-                <Zap
-                  className="w-6 h-6 text-primary"
-                  strokeWidth={2.5}
-                  fill="currentColor"
-                />
+                <Radar className="w-6 h-6 text-primary" strokeWidth={2.5} />
               </div>
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-3 mb-2 flex-wrap">

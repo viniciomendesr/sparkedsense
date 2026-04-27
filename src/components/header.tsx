@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { Zap, LogOut, UserCircle } from 'lucide-react';
+import { BoxSelect, Radar, LogOut, UserCircle } from 'lucide-react';
 import { Button } from './ui/button';
 import { useAuth } from '../lib/auth-context';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from './ui/dialog';
@@ -84,7 +84,11 @@ export function Header() {
               onClick={() => navigate(wordmarkHref)}
             >
               <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center">
-                <Zap className="w-5 h-5 text-primary-foreground" strokeWidth={2.5} fill="currentColor" />
+                {isInsedge ? (
+                  <BoxSelect className="w-5 h-5 text-primary-foreground" strokeWidth={2.5} />
+                ) : (
+                  <Radar className="w-5 h-5 text-primary-foreground" strokeWidth={2.5} />
+                )}
               </div>
               <div>
                 <h1 className="text-lg tracking-tight" style={{ fontWeight: 600, color: 'var(--text-primary)' }}>
