@@ -1,8 +1,8 @@
 # ADR-015: Unify ingestion on `/server/reading` (ADR-010 envelope)
 
 **Date:** 2026-04-25
-**Status:** Accepted (read-side union implemented 2026-04-27)
-**Supersedes (in part):** ADR-003 (`/server/sensor-data` is deprecated for new ingestion)
+**Status:** Implemented (cutover 2026-04-27)
+**Supersedes (in part):** ADR-003 (`/server/sensor-data` removed 2026-04-27)
 
 ## Context
 
@@ -79,7 +79,7 @@ For at least one release after the firmware update, `/server/sensor-data` will k
 
 ### Implementation notes
 
-- **2026-04-27** — Migration plan step 2 (read-side union) implemented in
+- **2026-04-27 (read-side union)** — Migration plan step 2 implemented in
   `getSensorReadings` and `countSensorReadings`. The real-mode branch now
   resolves `nft_address` (legacy) and `device_id` (envelope) in parallel and
   unions both tables before sorting/slicing. This fixes a class of bugs where
@@ -94,6 +94,43 @@ For at least one release after the firmware update, `/server/sensor-data` will k
   is straightforward when ADR-007 datasets need deeper history.
 - Dataset Merkle proofs (ADR-007) are not affected: existing datasets continue
   to reference `sensor_readings` rows that remain immutable.
+
+### Cutover note (deviation from migration plan step 5)
+
+- **2026-04-27 (cutover)** — `/server/sensor-data` flipped to HTTP 410 Gone
+  ~17h after the Nó #1 firmware flash (earliest envelope row in the database:
+  2026-04-26T19:32). Step 5 specified a ~7-day waiting window; we shortened it
+  because none of the conditions that motivate that buffer apply to this
+  deployment:
+  - Single legacy device (Nó #1). Nó #2 was always envelope-native.
+  - Single operator. No third-party scripts hit `/server/sensor-data`.
+  - Hard-cutover firmware: `ESP/esp8266/esp8266.ino` no longer references the
+    legacy URL anywhere except in a comment. Reverting requires a recompile
+    and re-flash, not a runtime flag.
+  - 17h of envelope-only traffic with hex secp256k1 signatures (1000+ rows
+    sampled, zero `signature: ''` matches in the union read of Nó #1's recent
+    200 readings) — strong evidence the device is publishing only via the
+    envelope path.
+- Rollback path if a regression appears: redeploy the prior Edge Function
+  version. The handler body was deleted (not commented out) per the
+  no-removed-code-shims rule; git history preserves the previous
+  implementation in commit `a1a9a2c`.
+
+### What this leaves behind
+
+- `sensor_readings` table is now strictly read-only, queried by the legacy
+  side of the real-mode union read in `getSensorReadings`.
+- The dual-write block inside `/server/sensor-data` (which mirrored legacy
+  rows into `readings` to give downstream consumers an envelope view) was
+  removed alongside the handler. Pre-cutover envelope rows produced by that
+  mirror remain in `readings` and continue to surface via the envelope side
+  of the union read.
+- Future cleanup tracked separately:
+  - Drop the `isUnverifiedMode()` shim once the KV migration to `unverified`
+    is confirmed converged.
+  - Consider collapsing the union read once `sensor_readings` no longer
+    contributes useful rows to typical UI windows (i.e. when the legacy
+    history is older than the longest chart range any consumer asks for).
 
 ## References
 

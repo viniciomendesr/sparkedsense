@@ -413,8 +413,33 @@ Two new ADRs formalise the direction:
 #### Still pending in Phase 16
 
 - **Drop the `isUnverifiedMode()` backwards-compat shim** in `index.ts` once we're confident the KV migration is complete and no other code path references the legacy value. Cheap insurance for now; remove in a future cleanup pass.
-- **Flash Nó #1** with the new firmware. Existing legacy publishes continue working until the device is reflashed; once flashed, `/server/sensor-data` should stop seeing writes from this device.
-- **Flip `/server/sensor-data` to 410 Gone** after ~7 days of zero writes, per ADR-015 cutover plan.
+
+### Phase 16 closure — ADR-015 cutover (27 Apr 2026)
+
+The legacy ingestion endpoint was retired and the read-side union shipped, closing ADR-015.
+
+#### Read-side union (`a1a9a2c`)
+- `getSensorReadings` and `countSensorReadings` real-mode branches now resolve `nft_address` (legacy) **and** `device_id` (envelope) in parallel, query `sensor_readings` and `readings` independently, then merge DESC by timestamp and slice to `limit`. Union is correct under `top-N-DESC(A ∪ B) = top-N-DESC(top-N-DESC(A) ∪ top-N-DESC(B))`.
+- This fixes a class of bugs where sensors created as `mode: "real"` but publishing envelopes (e.g. Nó #2 acoustic with the `unsigned_dev` bypass) returned `{readings: []}` while `lastReading` was populated. Validated in production: Nó #2 audit page now surfaces all 98 envelopes; Nó #1 audit/dashboard see the union of ~65500 legacy + ~1000 envelope rows.
+- Cost: ~+400ms TTFB on `/public/readings/:id` (extra device-id resolution + envelope-side count). Acceptable; the kv.getByPrefix scan in every public handler remains the larger latency contributor.
+
+#### Nó #1 firmware flash + observation
+- Earliest envelope in `readings` for Nó #1: **2026-04-26T19:32:42** — flash happened ~32h after the firmware commit (`4bf8734`).
+- Latest envelope at cutover time: 2026-04-27T13:19. ~17h of continuous envelope-only traffic with valid hex secp256k1 signatures (1000+ rows sampled, zero `signature: ''` matches).
+- Event type: `io.sparkedsense.sensor.environmental` — ADR-015 conformant.
+
+#### Cutover (`/server/sensor-data` → 410 Gone)
+- Endpoint retired 2026-04-27. Handler returns `{ error: 'This endpoint was removed on 2026-04-27...', code: 'gone' }` with `X-Sparked-Deprecation` header. Handler body (signature verification + dual-write mirror + KV bookkeeping) was deleted per the no-removed-code-shims rule; git history preserves the prior implementation.
+- Deviation from ADR-015 step 5: the 7-day buffer was shortened to ~17h because the conditions motivating that buffer don't apply (single legacy device, single operator, hard-cutover firmware with no runtime fallback, no third-party consumers of the endpoint). Documented in ADR-015's Cutover note section.
+- Rollback path: redeploy the prior Edge Function version if any regression surfaces.
+
+#### What this leaves behind
+- `sensor_readings` is now strictly read-only history, queried via the legacy side of the real-mode union read.
+- Pre-cutover envelope rows produced by the legacy `/server/sensor-data` dual-write mirror remain in `readings` and continue surfacing via the envelope side of the union.
+- Open follow-ups (not blocking ADR-015 closure):
+  - Drop `isUnverifiedMode()` shim after KV migration converges.
+  - Tackle the `kv.getByPrefix('sensor:')` scan that dominates TTFB on public handlers (separate ADR candidate).
+  - `/public/sensors/featured` at ~3.2s — iterates per public sensor with Merkle build; refactor target.
 
 ### Phase 15 addendum — persist `verify_jwt=false` for device ingestion (24 Apr 2026)
 

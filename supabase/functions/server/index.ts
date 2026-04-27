@@ -2568,194 +2568,24 @@ app.post("/server/register-device", async (c) => {
   }
 });
 
-// POST /server/sensor-data (no user JWT required) — DEPRECATED per ADR-015.
-// {nftAddress, signature: {r, s}, payload: {humidity, temperature, timestamp}}
+// POST /server/sensor-data — REMOVED per ADR-015 (cutover 2026-04-27).
 //
-// New firmware should publish to /server/reading (ADR-010 envelope) instead.
-// This endpoint stays accepting writes for ~7 days after the firmware migration
-// to absorb any device that flashed late (rollback safety). After that, returns
-// 410 Gone. Reads via internal helpers continue to work indefinitely; the
-// sensor_readings table is frozen as read-only history.
+// All ingestion now goes through /server/reading (ADR-010 envelope). The
+// legacy ESP8266 firmware was migrated and flashed 2026-04-26; cutover to
+// 410 Gone happened 2026-04-27 after ~17h of clean envelope traffic
+// confirmed no straggler legacy publishers exist (single-device fleet,
+// hard-cutover firmware — the 7-day buffer in ADR-015 step 5 was overkill
+// for this deployment context). Reads from `sensor_readings` continue to
+// work via getSensorReadings' real-mode union read; the table is frozen
+// read-only history and Merkle proofs from pre-cutover datasets remain valid.
 app.post("/server/sensor-data", async (c) => {
-  try {
-    const body = await c.req.json();
-    const { nftAddress, signature, payload } = body;
-
-    if (!nftAddress || !signature || !payload) {
-      return c.json({ error: 'Missing nftAddress, signature, or payload' }, 400);
-    }
-
-    // ADR-015 deprecation telemetry — surface every legacy write so we know
-    // when the firmware fleet has finished migrating. Header on the response
-    // also signals to operators inspecting the network.
-    console.warn(`⚠️  Legacy /server/sensor-data POST (ADR-015 deprecated) — nft=${nftAddress.substring(0, 16)}...`);
-    c.header('X-Sparked-Deprecation', 'use /server/reading per ADR-015');
-
-    // Fetch device by nftAddress
-    const { data: device, error: fetchError } = await supabase
-      .from('devices')
-      .select('*')
-      .eq('nft_address', nftAddress)
-      .single();
-
-    if (fetchError || !device) {
-      return c.json({ error: 'Device not found for nftAddress: ' + nftAddress }, 404);
-    }
-
-    if (device.revoked) {
-      return c.json({ error: 'Device revoked' }, 403);
-    }
-
-    // Rate limit: 55s minimum between readings
-    const nowSec = Math.floor(Date.now() / 1000);
-    if (device.last_ts_seen && (nowSec - Number(device.last_ts_seen)) < 55) {
-      return c.json({ error: 'Rate limited - wait before sending another reading' }, 429);
-    }
-
-    // Canonical JSON: sort keys alphabetically (must match ESP)
-    const sortedKeys = Object.keys(payload).sort();
-    const canonicalObj: Record<string, unknown> = {};
-    for (const k of sortedKeys) canonicalObj[k] = payload[k];
-    const canonicalJson = JSON.stringify(canonicalObj);
-
-    // Verify secp256k1 signature using @noble/curves (Deno-native)
-    const canonicalBytes = new TextEncoder().encode(canonicalJson);
-    const hashBuffer = await crypto.subtle.digest('SHA-256', canonicalBytes);
-    const msgHash = new Uint8Array(hashBuffer);
-
-    const rHex = signature.r.padStart(64, '0');
-    const sHex = signature.s.padStart(64, '0');
-    const sigBytes = new Uint8Array(64);
-    for (let i = 0; i < 32; i++) {
-      sigBytes[i] = parseInt(rHex.substring(i * 2, i * 2 + 2), 16);
-      sigBytes[32 + i] = parseInt(sHex.substring(i * 2, i * 2 + 2), 16);
-    }
-
-    const pubKeyBytes = new Uint8Array(device.public_key.length / 2);
-    for (let i = 0; i < pubKeyBytes.length; i++) {
-      pubKeyBytes[i] = parseInt(device.public_key.substring(i * 2, i * 2 + 2), 16);
-    }
-
-    const sigObj = secp256k1.secp256k1.Signature.fromCompact(sigBytes);
-    // lowS: false — uECC on ESP8266 doesn't normalize to low-S (BIP-0062)
-    if (!secp256k1.secp256k1.verify(sigObj, msgHash, pubKeyBytes, { lowS: false })) {
-      return c.json({ error: 'Invalid signature' }, 401);
-    }
-
-    // Store in sensor_readings table (PostgreSQL)
-    const readingTimestamp = new Date(Number(payload.timestamp) * 1000).toISOString();
-    const { error: insertError } = await supabase
-      .from('sensor_readings')
-      .insert({
-        nft_address: nftAddress,
-        timestamp: readingTimestamp,
-        data: payload,
-      });
-
-    if (insertError) {
-      console.error('Insert reading error:', insertError);
-      return c.json({ error: 'DB error: ' + insertError.message }, 500);
-    }
-
-    // Update device lastTsSeen
-    await supabase
-      .from('devices')
-      .update({ last_ts_seen: nowSec })
-      .eq('nft_address', nftAddress);
-
-    // ADR-010 dual-write: also mirror into the new `readings` table as an
-    // io.sparkedsense.sensor.environmental envelope. ESP8266 firmware keeps
-    // posting the legacy shape; we wrap it here so downstream consumers can
-    // migrate to the envelope feed without waiting for a firmware update.
-    try {
-      const envelopeId = crypto.randomUUID();
-      const senmlRecords: Record<string, unknown>[] = [];
-      if (typeof payload.temperature === 'number') {
-        senmlRecords.push({ n: 'temperature', u: 'Cel', v: payload.temperature });
-      }
-      if (typeof payload.humidity === 'number') {
-        senmlRecords.push({ n: 'humidity', u: '%RH', v: payload.humidity });
-      }
-      if (typeof payload.ph_level === 'number') {
-        senmlRecords.push({ n: 'ph', u: '1', v: payload.ph_level });
-      }
-
-      if (senmlRecords.length > 0) {
-        await supabase.from('readings').insert({
-          id: envelopeId,
-          spec_version: '1.0',
-          event_type: 'io.sparkedsense.sensor.environmental',
-          source: `spark:device:${device.public_key}`,
-          time: readingTimestamp,
-          datacontenttype: 'application/senml+json',
-          data: senmlRecords,
-          device_id: device.id,
-          // Legacy payload uses {r, s} split; mirror compact hex so the row keeps a
-          // reference to the original proof. This signature is NOT re-verifiable against
-          // the envelope canonicalization — the authoritative proof remains the row in
-          // sensor_readings. The adapter is an ADR-010 compat shim, not a new trust root.
-          signature: `${signature.r}${signature.s}`,
-        });
-      }
-    } catch (envErr: any) {
-      console.error('ADR-010 mirror (sensor-data → readings) failed (non-fatal):', envErr.message);
-    }
-
-    // Also store in KV store so the dashboard Live Stream / Real-Time Chart can display it
-    try {
-      const allSensors = await kv.getByPrefix('sensor:');
-      const linkedSensor = allSensors.find((s: any) => s.claimToken === device.claim_token);
-
-      if (linkedSensor) {
-        // Determine sensor type config for unit
-        const config = sensorTypeConfigs[linkedSensor.type] || sensorTypeConfigs.temperature;
-        const mainValue = payload.temperature ?? payload.humidity ?? payload.ph_level ?? 0;
-
-        // Hash the reading data
-        const readingData = JSON.stringify({
-          sensorId: linkedSensor.id,
-          timestamp: readingTimestamp,
-          value: mainValue,
-          unit: config.unit,
-        });
-        const hashBuf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(readingData));
-        const hash = Array.from(new Uint8Array(hashBuf)).map(b => b.toString(16).padStart(2, '0')).join('');
-
-        const readingId = crypto.randomUUID();
-        const kvReading = {
-          id: readingId,
-          sensorId: linkedSensor.id,
-          timestamp: readingTimestamp,
-          variable: config.variable,
-          value: mainValue,
-          unit: config.unit,
-          verified: true,
-          hash,
-          signature: `device_sig_${signature.r.substring(0, 16)}`,
-        };
-
-        // Update sensor status to active + last reading
-        linkedSensor.status = 'active';
-        linkedSensor.lastReading = kvReading;
-        linkedSensor.updatedAt = new Date().toISOString();
-        await kv.set(`sensor:${linkedSensor.owner}:${linkedSensor.id}`, linkedSensor);
-
-        console.log(`📊 KV reading stored for sensor "${linkedSensor.name}" (${linkedSensor.id})`);
-      } else {
-        console.log(`ℹ️  No KV sensor linked to claim_token ${device.claim_token?.substring(0, 12)}...`);
-      }
-    } catch (kvErr: any) {
-      // KV write is best-effort — don't fail the main request
-      console.error('KV write error (non-fatal):', kvErr.message);
-    }
-
-    console.log(`📊 Reading stored for ${nftAddress.substring(0, 16)}...: ${canonicalJson}`);
-    return c.json({ success: true });
-
-  } catch (err: any) {
-    console.error('sensor-data error:', err);
-    return c.json({ error: err.message || 'Internal server error' }, 500);
-  }
+  console.warn(`⚠️  Legacy /server/sensor-data POST hit after cutover (ADR-015) — should not happen`);
+  c.header('X-Sparked-Deprecation', 'endpoint removed; use /server/reading per ADR-015');
+  return c.json({
+    error: 'This endpoint was removed on 2026-04-27. Devices must publish CloudEvents envelopes to /server/reading per ADR-015.',
+    code: 'gone',
+    migration: 'https://github.com/viniciomendesr/sparkedsense/blob/main/docs/adr/015-unify-ingestion-on-adr-010.md',
+  }, 410);
 });
 
 // ======================
