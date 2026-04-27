@@ -9,9 +9,9 @@ export default function InsedgeLandingPage() {
 
   return (
     <div className="flex flex-col">
-      {/* Hero — content-driven height, no viewport stretch */}
+      {/* Hero — content-driven height, narrow content rail */}
       <section className="px-4 sm:px-6 py-12 sm:py-16">
-        <div className="max-w-3xl mx-auto text-center">
+        <div className="max-w-2xl mx-auto text-center">
           <div className="inline-flex items-center gap-2 px-3 py-2 rounded-full bg-primary/10 border border-primary/20 mb-5">
             <Cpu className="w-4 h-4 text-primary shrink-0" />
             <span className="text-xs sm:text-sm" style={{ color: 'var(--primary)' }}>
@@ -27,7 +27,7 @@ export default function InsedgeLandingPage() {
           </h1>
 
           <p
-            className="max-w-2xl mx-auto text-base sm:text-lg"
+            className="text-base sm:text-lg"
             style={{ color: 'var(--text-secondary)', lineHeight: '1.6' }}
           >
             {m.insedge_hero_subtitle()}
@@ -35,9 +35,9 @@ export default function InsedgeLandingPage() {
         </div>
       </section>
 
-      {/* Initiatives */}
+      {/* Initiatives — same content-rail as hero so the page reads as one column */}
       <section className="px-4 sm:px-6 pt-8 sm:pt-10 pb-12 sm:pb-16 border-t border-border">
-        <div className="max-w-5xl mx-auto">
+        <div className="max-w-2xl mx-auto">
           <div className="text-center mb-10">
             <h2
               className="text-2xl sm:text-3xl mb-3"
