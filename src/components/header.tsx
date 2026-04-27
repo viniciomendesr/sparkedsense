@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { Zap, LogOut, UserCircle } from 'lucide-react';
 import { Button } from './ui/button';
 import { useAuth } from '../lib/auth-context';
@@ -13,7 +13,11 @@ import { LanguageSwitcher } from './language-switcher';
 
 export function Header() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { user, signIn, signUp, signOut } = useAuth();
+  // Auth controls only make sense inside an initiative (Edge Tracker).
+  // The Insedge landing at "/" is org-level chrome where login has no scope.
+  const showAuth = location.pathname !== '/';
   const [showAuthDialog, setShowAuthDialog] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -84,35 +88,37 @@ export function Header() {
               </div>
             </div>
 
-            {/* Auth */}
+            {/* Auth + global controls */}
             <div className="flex items-center gap-4">
               <LanguageSwitcher />
               <ThemeToggle />
-              {user ? (
-                <div className="flex items-center gap-3">
-                  <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-lg bg-muted">
-                    <UserCircle className="w-4 h-4" style={{ color: 'var(--text-secondary)' }} />
-                    <span className="text-sm" style={{ color: 'var(--text-secondary)' }}>
-                      {displayName}
-                    </span>
+              {showAuth && (
+                user ? (
+                  <div className="flex items-center gap-3">
+                    <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-lg bg-muted">
+                      <UserCircle className="w-4 h-4" style={{ color: 'var(--text-secondary)' }} />
+                      <span className="text-sm" style={{ color: 'var(--text-secondary)' }}>
+                        {displayName}
+                      </span>
+                    </div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={handleSignOut}
+                      className="border-border hover:bg-muted"
+                    >
+                      <LogOut className="w-4 h-4 mr-2" />
+                      Sign Out
+                    </Button>
                   </div>
-                  <Button 
-                    variant="outline" 
-                    size="sm"
-                    onClick={handleSignOut}
-                    className="border-border hover:bg-muted"
+                ) : (
+                  <Button
+                    onClick={() => setShowAuthDialog(true)}
+                    className="bg-primary text-primary-foreground"
                   >
-                    <LogOut className="w-4 h-4 mr-2" />
-                    Sign Out
+                    Sign In
                   </Button>
-                </div>
-              ) : (
-                <Button 
-                  onClick={() => setShowAuthDialog(true)}
-                  className="bg-primary text-primary-foreground"
-                >
-                  Sign In
-                </Button>
+                )
               )}
             </div>
           </div>

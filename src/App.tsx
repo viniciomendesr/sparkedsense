@@ -317,7 +317,7 @@ function AppContent() {
       <main className="flex-1">
         <Routes>
           <Route path="/" element={<InsedgeLandingPage />} />
-          <Route path="/edge-tracker" element={<HomeWrapper />} />
+          <Route path="/edgetracker" element={<HomeWrapper />} />
           <Route
             path="/preview_page.html"
             element={<HomeWrapper />}

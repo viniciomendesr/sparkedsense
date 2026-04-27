@@ -56,11 +56,11 @@ export default function InsedgeLandingPage() {
           <Card
             role="link"
             tabIndex={0}
-            onClick={() => navigate('/edge-tracker')}
+            onClick={() => navigate('/edgetracker')}
             onKeyDown={(e) => {
               if (e.key === 'Enter' || e.key === ' ') {
                 e.preventDefault();
-                navigate('/edge-tracker');
+                navigate('/edgetracker');
               }
             }}
             className="p-6 sm:p-8 bg-card border-border hover:border-primary/50 transition-all duration-200 group cursor-pointer"
