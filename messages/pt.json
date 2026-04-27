@@ -26,6 +26,18 @@
   "language_switcher_label": "Idioma",
   "language_switcher_aria": "Trocar idioma",
 
+  "sparked_eyebrow": "Guarda-chuva de pesquisa open source",
+  "sparked_hero_title": "Infraestrutura Physical AI open source",
+  "sparked_hero_subtitle": "O Sparked constrói ferramentas e protocolos para a camada onde a IA encontra o mundo físico: sensores, microcontroladores e edge ML rodando em hardware comum. Cada iniciativa é um experimento focado nessa direção.",
+  "sparked_initiatives_title": "Iniciativas",
+  "sparked_initiatives_subtitle": "Projetos de pesquisa independentes compartilhando uma base comum.",
+  "sparked_status_live": "Ativo",
+  "sparked_sense_card_description": "Infraestrutura para dados físicos verificáveis. Identidade criptográfica de dispositivo, ingestão assinada e datasets ancorados em Merkle na Solana — conecte qualquer microcontrolador comum (ESP8266/ESP32) sem hardware proprietário nem intermediários de confiança.",
+  "sparked_explore_initiative": "Explorar iniciativa",
+  "sparked_more_initiatives_soon": "Mais iniciativas em desenvolvimento.",
+  "sparked_about_title": "Sobre",
+  "sparked_about_text": "O Sparked é um guarda-chuva de pesquisa open source originado na Poli-USP. O trabalho começa acadêmico mas os artefatos viram infraestrutura de produção — o objetivo é pesquisa que outras pessoas podem rodar, forkar e estender, não papers que ficam na prateleira.",
+
   "home_steps_title": "Como funciona",
   "home_steps_1_title": "Entrar",
   "home_steps_1_desc": "Crie sua conta",
@@ -49,7 +61,7 @@
   "home_cta_subtitle": "Conecte sua carteira e registre seu primeiro sensor em minutos",
   "home_cta_button": "Começar",
 
-  "footer_copy": "© 2025 Sparked Sense. Uma infraestrutura aberta para dados físicos verificáveis.",
+  "footer_copy": "© 2025 Sparked. Infraestrutura Physical AI open source.",
   "footer_documentation": "Documentação",
   "footer_github": "GitHub",
 

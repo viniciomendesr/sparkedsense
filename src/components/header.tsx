@@ -79,7 +79,7 @@ export function Header() {
               </div>
               <div>
                 <h1 className="text-lg tracking-tight" style={{ fontWeight: 600, color: 'var(--text-primary)' }}>
-                  SPARKED SENSE
+                  SPARKED
                 </h1>
               </div>
             </div>

@@ -10,6 +10,7 @@ import { useEffect, useState } from "react";
 import { Header } from "./components/header";
 import { Footer } from "./components/footer";
 import { HomePage } from "./pages/home";
+import SparkedLandingPage from "./pages/sparked-landing";
 import { DashboardPage } from "./pages/dashboard";
 import { SensorDetailPage } from "./pages/sensor-detail";
 import { PublicSensorDetailPage } from "./pages/public-sensor-detail";
@@ -315,7 +316,8 @@ function AppContent() {
 
       <main className="flex-1">
         <Routes>
-          <Route path="/" element={<HomeWrapper />} />
+          <Route path="/" element={<SparkedLandingPage />} />
+          <Route path="/sparked-sense" element={<HomeWrapper />} />
           <Route
             path="/preview_page.html"
             element={<HomeWrapper />}
@@ -333,7 +335,7 @@ function AppContent() {
             path="/public-sensors"
             element={<PublicSensorsPage />}
           />
-          <Route path="*" element={<HomeWrapper />} />
+          <Route path="*" element={<SparkedLandingPage />} />
         </Routes>
       </main>
 
