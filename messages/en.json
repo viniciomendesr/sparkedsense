@@ -26,9 +26,6 @@
   "language_switcher_label": "Language",
   "language_switcher_aria": "Switch language",
 
-  "insedge_eyebrow": "Open-source research umbrella",
-  "insedge_hero_title": "Open-source Physical AI infrastructure",
-  "insedge_hero_subtitle": "Insedge builds tools and protocols for the layer where AI meets the physical world: sensors, microcontrollers, and edge ML running on commodity hardware. Each initiative is a focused experiment toward that goal.",
   "insedge_initiatives_title": "Initiatives",
   "insedge_initiatives_subtitle": "Independent research projects sharing a common foundation.",
   "insedge_status_live": "Live",

@@ -4,7 +4,7 @@
 
 Insedge is an open-source research umbrella for the layer where AI meets the physical world: sensors, microcontrollers, and edge ML running on commodity hardware. Each initiative is a focused experiment in that direction.
 
-🔗 [Live](https://sparkedsensemvp.vercel.app/) · 🐦 [@sparkedsense](https://x.com/sparkedsense)
+🔗 [Live](https://insedge.org/edgetracker) · 🐦 [@sparkedsense](https://x.com/sparkedsense)
 
 ---
 

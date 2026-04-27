@@ -46,51 +46,9 @@ export default function InsedgeLandingPage() {
 
   return (
     <div className="flex flex-col">
-      {/* HERO — narrow centered rail, editorial type */}
-      <section className="border-b border-border relative overflow-hidden">
-        <div
-          aria-hidden
-          className="pointer-events-none absolute inset-0"
-          style={{
-            background:
-              'radial-gradient(ellipse 60% 40% at 50% -10%, rgba(151,170,247,0.08), transparent 65%)',
-          }}
-        />
-        <div className="max-w-2xl mx-auto px-6 pt-24 sm:pt-32 pb-20 sm:pb-24 relative text-center">
-          <div className="mb-8 flex justify-center">
-            <Eyebrow>{m.insedge_eyebrow()}</Eyebrow>
-          </div>
-
-          <h1
-            className="mx-auto"
-            style={{
-              fontSize: 'clamp(32px, 4.5vw, 56px)',
-              lineHeight: 1.08,
-              letterSpacing: '-0.02em',
-              fontWeight: 500,
-              color: 'var(--text-primary)',
-            }}
-          >
-            {m.insedge_hero_title()}
-          </h1>
-
-          <p
-            className="mt-6 sm:mt-8 mx-auto"
-            style={{
-              fontSize: '16.5px',
-              lineHeight: 1.6,
-              color: 'var(--text-secondary)',
-              maxWidth: '38ch',
-            }}
-          >
-            {m.insedge_hero_subtitle()}
-          </p>
-        </div>
-      </section>
-
-      {/* INITIATIVES — centered stack, no card chrome */}
+      {/* INITIATIVES — landing leads directly with the work in development */}
       <section className="border-b border-border">
-        <div className="max-w-2xl mx-auto px-6 py-16 sm:py-20 text-center">
+        <div className="max-w-2xl mx-auto px-6 pt-20 sm:pt-28 pb-16 sm:pb-20 text-center">
           <div className="mb-6 flex justify-center">
             <Eyebrow>01 / {m.insedge_initiatives_title()}</Eyebrow>
           </div>
