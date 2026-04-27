@@ -2,9 +2,24 @@
   import { defineConfig } from 'vite';
   import react from '@vitejs/plugin-react-swc';
   import path from 'path';
+  import { paraglideVitePlugin } from '@inlang/paraglide-js';
 
   export default defineConfig({
-    plugins: [react()],
+    plugins: [
+      react(),
+      // Paraglide compiles ./messages/{en,pt}.json into typed message functions
+      // under ./src/paraglide. Strategy precedence (first match wins):
+      //   globalVariable    — explicit setLocale() from <LanguageSwitcher>
+      //   localStorage      — persisted choice across visits
+      //   preferredLanguage — first-visit auto-detect from navigator.language
+      //   baseLocale        — fallback (en)
+      // No cookie/url strategies: this is a client-only SPA without locale-prefixed routes.
+      paraglideVitePlugin({
+        project: './project.inlang',
+        outdir: './src/paraglide',
+        strategy: ['globalVariable', 'localStorage', 'preferredLanguage', 'baseLocale'],
+      }),
+    ],
     resolve: {
       extensions: ['.js', '.jsx', '.ts', '.tsx', '.json'],
       alias: {

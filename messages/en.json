@@ -1,0 +1,28 @@
+{
+  "$schema": "https://inlang.com/schema/inlang-message-format",
+
+  "home_hero_eyebrow": "Web3 Infrastructure for IoT Data Validation",
+  "home_hero_title_lead": "Turn real-world sensors into",
+  "home_hero_title_highlight": "Verifiable data streams",
+  "home_hero_subtitle": "Sparked Sense connects IoT sensors directly to the Solana blockchain, transforming physical measurements into auditable, economically valuable data without centralized intermediaries.",
+  "home_hero_cta_dashboard": "Go to Dashboard",
+  "home_hero_cta_signin": "Sign In to Get Started",
+  "home_hero_cta_public_sensors": "View public sensors",
+
+  "home_featured_title": "Featured public sensors",
+  "home_featured_subtitle": "Top verified sensors from our infrastructure",
+  "home_featured_view_all": "View all",
+  "home_featured_error_title": "Unable to load featured sensors",
+  "home_featured_error_hint": "Make sure the Supabase Edge Function is deployed and running.",
+  "home_featured_error_retry": "Try Again",
+
+  "sensor_card_status_active": "Active",
+  "sensor_card_status_inactive": "Inactive",
+  "sensor_card_latest_reading": "Latest Reading",
+  "sensor_card_stored": "Stored",
+  "sensor_card_readings": "Readings",
+  "sensor_card_view_details": "View Details",
+
+  "language_switcher_label": "Language",
+  "language_switcher_aria": "Switch language"
+}

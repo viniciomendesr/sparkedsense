@@ -9,6 +9,7 @@ import { Label } from './ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
 import { toast } from 'sonner@2.0.3';
 import { ThemeToggle } from './theme-toggle';
+import { LanguageSwitcher } from './language-switcher';
 
 export function Header() {
   const navigate = useNavigate();
@@ -85,6 +86,7 @@ export function Header() {
 
             {/* Auth */}
             <div className="flex items-center gap-4">
+              <LanguageSwitcher />
               <ThemeToggle />
               {user ? (
                 <div className="flex items-center gap-3">

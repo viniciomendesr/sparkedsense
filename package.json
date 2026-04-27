@@ -3,6 +3,7 @@
     "version": "0.1.0",
     "private": true,
     "dependencies": {
+        "@inlang/paraglide-js": "^2.16.1",
         "@radix-ui/react-accordion": "^1.2.3",
         "@radix-ui/react-alert-dialog": "^1.1.6",
         "@radix-ui/react-aspect-ratio": "^1.1.2",
@@ -62,6 +63,10 @@
     },
     "scripts": {
         "dev": "vite",
-        "build": "vite build"
+        "build": "vite build",
+        "paraglide:compile": "paraglide-js compile --project ./project.inlang --outdir ./src/paraglide --strategy globalVariable localStorage preferredLanguage baseLocale"
+    },
+    "engines": {
+        "node": ">=20"
     }
 }

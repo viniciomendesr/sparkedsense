@@ -9,6 +9,7 @@ import { publicAPI } from '../lib/api';
 import { SensorMetrics } from '../lib/types';
 import { supabase } from '../utils/supabase/client';
 import { formatDataSize } from '../lib/format';
+import { m } from '../paraglide/messages';
 
 interface HomePageProps {
   onGetStarted: () => void;
@@ -139,18 +140,18 @@ export function HomePage({ onGetStarted }: HomePageProps) {
           <div className="inline-flex items-center gap-2 px-3 sm:px-4 py-2 rounded-full bg-primary/10 border border-primary/20 mb-6">
             <CheckCircle2 className="w-4 h-4 text-primary shrink-0" />
             <span className="text-xs sm:text-sm" style={{ color: 'var(--primary)' }}>
-              Web3 Infrastructure for IoT Data Validation
+              {m.home_hero_eyebrow()}
             </span>
           </div>
 
           <h1 className="text-2xl sm:text-4xl mb-6" style={{ fontWeight: 600, lineHeight: '1.2', color: 'var(--text-primary)' }}>
-            Turn real-world sensors into
+            {m.home_hero_title_lead()}
             <br />
-            <span className="text-primary">Verifiable data streams</span>
+            <span className="text-primary">{m.home_hero_title_highlight()}</span>
           </h1>
 
           <p className="mb-8 max-w-2xl mx-auto text-sm sm:text-lg" style={{ color: 'var(--text-secondary)', lineHeight: '1.6' }}>
-            Sparked Sense connects IoT sensors directly to the Solana blockchain, transforming physical measurements into auditable, economically valuable data without centralized intermediaries.
+            {m.home_hero_subtitle()}
           </p>
 
           <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-center gap-3 sm:gap-4">
@@ -160,7 +161,7 @@ export function HomePage({ onGetStarted }: HomePageProps) {
               className="bg-primary text-primary-foreground"
               disabled={!user}
             >
-              {user ? 'Go to Dashboard' : 'Sign In to Get Started'}
+              {user ? m.home_hero_cta_dashboard() : m.home_hero_cta_signin()}
               <ArrowRight className="w-4 h-4 ml-2" />
             </Button>
             <Button
@@ -170,7 +171,7 @@ export function HomePage({ onGetStarted }: HomePageProps) {
               onClick={() => navigate('/public-sensors')}
             >
               <Database className="w-4 h-4" />
-              View public sensors
+              {m.home_hero_cta_public_sensors()}
             </Button>
           </div>
         </div>
@@ -183,21 +184,21 @@ export function HomePage({ onGetStarted }: HomePageProps) {
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
               <div>
                 <h2 className="text-xl sm:text-2xl" style={{ fontWeight: 600, color: 'var(--text-primary)', marginBottom: '8px' }}>
-                  Featured public sensors
+                  {m.home_featured_title()}
                 </h2>
                 <p className="text-sm sm:text-base" style={{ color: 'var(--text-secondary)' }}>
-                  Top verified sensors from our infrastructure
+                  {m.home_featured_subtitle()}
                 </p>
               </div>
               <Button
                 variant="outline"
                 onClick={() => navigate('/public-sensors')}
               >
-                View all
+                {m.home_featured_view_all()}
                 <ArrowRight className="w-4 h-4" />
               </Button>
             </div>
-            
+
             {fetchError ? (
               <Card className="p-8 bg-card border-border text-center">
                 <div className="flex flex-col items-center gap-4">
@@ -206,20 +207,20 @@ export function HomePage({ onGetStarted }: HomePageProps) {
                   </div>
                   <div>
                     <h3 className="mb-2" style={{ fontWeight: 600, color: 'var(--text-primary)' }}>
-                      Unable to load featured sensors
+                      {m.home_featured_error_title()}
                     </h3>
                     <p className="text-sm mb-4" style={{ color: 'var(--text-secondary)' }}>
                       {fetchError}
                     </p>
                     <p className="text-xs mb-4" style={{ color: 'var(--text-muted)' }}>
-                      Make sure the Supabase Edge Function is deployed and running.
+                      {m.home_featured_error_hint()}
                     </p>
-                    <Button 
-                      variant="outline" 
+                    <Button
+                      variant="outline"
                       size="sm"
                       onClick={loadFeaturedSensors}
                     >
-                      Try Again
+                      {m.home_featured_error_retry()}
                     </Button>
                   </div>
                 </div>
@@ -286,7 +287,7 @@ export function HomePage({ onGetStarted }: HomePageProps) {
                                 <div className={`w-2 h-2 rounded-full ${
                                   sensor.status === 'active' ? 'bg-success animate-pulse' : 'bg-[var(--text-disabled)]'
                                 }`}></div>
-                                {sensor.status === 'active' ? 'Active' : 'Inactive'}
+                                {sensor.status === 'active' ? m.sensor_card_status_active() : m.sensor_card_status_inactive()}
                               </div>
                             </Badge>
                           </div>
@@ -296,7 +297,7 @@ export function HomePage({ onGetStarted }: HomePageProps) {
                             <div className="flex items-center gap-2">
                               <Activity className={`w-4 h-4 text-primary ${sensor.status === 'active' ? 'animate-pulse' : ''}`} />
                               <span className="text-sm" style={{ color: 'var(--text-secondary)' }}>
-                                Latest Reading
+                                {m.sensor_card_latest_reading()}
                               </span>
                             </div>
                             <div className="text-right">
@@ -328,7 +329,7 @@ export function HomePage({ onGetStarted }: HomePageProps) {
                             <div className="p-3 rounded-lg bg-primary/5 border border-primary/10 text-center">
                               <div className="flex items-center justify-center gap-1.5 mb-1">
                                 <Database className="w-3 h-3 text-primary/60" />
-                                <span className="text-xs uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>Stored</span>
+                                <span className="text-xs uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>{m.sensor_card_stored()}</span>
                               </div>
                               <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
                                 {formatDataSize(sensor.totalDataBytes ?? 0)}
@@ -337,7 +338,7 @@ export function HomePage({ onGetStarted }: HomePageProps) {
                             <div className="p-3 rounded-lg bg-primary/5 border border-primary/10 text-center">
                               <div className="flex items-center justify-center gap-1.5 mb-1">
                                 <Hash className="w-3 h-3 text-primary/60" />
-                                <span className="text-xs uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>Readings</span>
+                                <span className="text-xs uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>{m.sensor_card_readings()}</span>
                               </div>
                               <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
                                 {sensor.totalReadingsCount.toLocaleString()}
@@ -353,7 +354,7 @@ export function HomePage({ onGetStarted }: HomePageProps) {
                               navigate(`/audit?sensor=${sensor.id}`);
                             }}
                           >
-                            View Details
+                            {m.sensor_card_view_details()}
                           </Button>
                         </div>
                       </Card>
