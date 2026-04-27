@@ -1,7 +1,7 @@
 # ADR-015: Unify ingestion on `/server/reading` (ADR-010 envelope)
 
 **Date:** 2026-04-25
-**Status:** Accepted
+**Status:** Accepted (read-side union implemented 2026-04-27)
 **Supersedes (in part):** ADR-003 (`/server/sensor-data` is deprecated for new ingestion)
 
 ## Context
@@ -76,6 +76,24 @@ For at least one release after the firmware update, `/server/sensor-data` will k
 5. Wait 7 days for any straggler.
 6. Flip `/server/sensor-data` to return 410 Gone for new POSTs.
 7. Update this ADR's status to `Implemented`.
+
+### Implementation notes
+
+- **2026-04-27** — Migration plan step 2 (read-side union) implemented in
+  `getSensorReadings` and `countSensorReadings`. The real-mode branch now
+  resolves `nft_address` (legacy) and `device_id` (envelope) in parallel and
+  unions both tables before sorting/slicing. This fixes a class of bugs where
+  sensors created as `mode: "real"` whose firmware actually publishes ADR-010
+  envelopes (e.g. Node #2 acoustic, which uses the `unsigned_dev` bypass)
+  surfaced an empty readings list while their `lastReading` KV mirror was
+  populated. The union path is correct under
+  `top-N-DESC(A ∪ B) = top-N-DESC(top-N-DESC(A) ∪ top-N-DESC(B))`.
+- The legacy side keeps the parallel `.range()` paging up to `limit`. The
+  envelope side caps at PostgREST's default 1000 rows per request, matching
+  the unverified branch — sufficient for current chart windows; bumping this
+  is straightforward when ADR-007 datasets need deeper history.
+- Dataset Merkle proofs (ADR-007) are not affected: existing datasets continue
+  to reference `sensor_readings` rows that remain immutable.
 
 ## References
 

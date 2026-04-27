@@ -250,10 +250,32 @@ const getSensorReadings = async (
     return mapped.map((reading, i) => ({ ...reading, sequence: globalTotal - i }));
   }
 
-  // Real sensors: resolve nft_address and query PG
+  // Real sensors: union of legacy `sensor_readings` (keyed by nft_address,
+  // ADR-003 transport) and ADR-010 envelope `readings` (keyed by device_id).
+  // Per ADR-015 §"Migration plan" step 2, the real-mode reader unions both
+  // tables during the transition window so that:
+  //   - sensors with only legacy rows keep working (Node #1 pre-firmware-update),
+  //   - sensors that have already switched firmware to envelopes surface their data,
+  //   - sensors created as `mode: "real"` whose firmware actually publishes
+  //     envelopes (e.g. Node #2 acoustic) are not silently empty.
+  //
+  // top-N-DESC(A ∪ B) = top-N-DESC(top-N-DESC(A) ∪ top-N-DESC(B)), so fetching
+  // the latest N from each side and merging is equivalent to the latest N of
+  // the union — at twice the bandwidth in the worst case but without a JOIN we
+  // don't have on PostgREST.
   const nftAddress = await resolveNftAddress(sensorId, sensor);
-  if (!nftAddress) {
-    // Fallback to KV if no device linked yet
+  let deviceId: string | null = null;
+  if (sensor?.claimToken) {
+    const { data } = await supabase
+      .from('devices')
+      .select('id')
+      .eq('claim_token', sensor.claimToken)
+      .maybeSingle();
+    deviceId = data?.id ?? null;
+  }
+
+  if (!nftAddress && !deviceId) {
+    // No linked device — fallback to KV (covers fixtures from before device linking)
     let readings = await kv.getByPrefix(`reading:${sensorId}:`);
     if (options?.since) readings = readings.filter((r: any) => new Date(r.timestamp) >= options.since!);
     if (options?.until) readings = readings.filter((r: any) => new Date(r.timestamp) <= options.until!);
@@ -262,80 +284,110 @@ const getSensorReadings = async (
     return readings;
   }
 
-  // Query sensor_readings from PostgreSQL.
-  //
-  // Supabase PostgREST caps each response at 1000 rows. We page via .range(),
-  // but firing pages **in parallel** is ~10–15x faster than serial when the
-  // caller asks for a lot (e.g. historical chart asking for 50k). On the
-  // Supabase free tier the edge runtime's wall-clock limit around 15-20s was
-  // hitting HTTP 546 WORKER_RESOURCE_LIMIT with serial fetches.
-  //
-  // Approach: HEAD count first to know exactly how many pages to fire, then
-  // fire them all with Promise.all. Past ~50k rows this still becomes a
-  // bottleneck — real fix at that scale is LTTB downsampling, not more paging.
   const PAGE_SIZE = 1000;
   const target = options?.limit ?? PAGE_SIZE;
 
-  let countQ = supabase
-    .from('sensor_readings')
-    .select('id', { count: 'exact', head: true })
-    .eq('nft_address', nftAddress);
-  if (options?.since) countQ = countQ.gte('timestamp', options.since.toISOString());
-  if (options?.until) countQ = countQ.lte('timestamp', options.until.toISOString());
-  const { count, error: countErr } = await countQ;
-  if (countErr) {
-    console.error('getSensorReadings count error:', countErr.message);
-    return [];
-  }
-  const totalAvailable = count ?? 0;
-  const totalToFetch = Math.min(totalAvailable, target);
-  if (totalToFetch === 0) return [];
+  // Legacy side: Supabase PostgREST caps each response at 1000 rows. We page
+  // via .range() in parallel, which is ~10–15x faster than serial when the
+  // caller asks for a lot (e.g. historical chart asking for 50k) and avoids
+  // hitting HTTP 546 WORKER_RESOURCE_LIMIT on the free tier. Past ~50k rows
+  // the real fix is LTTB downsampling, not more paging.
+  const fetchLegacy = async (): Promise<{ rows: any[]; total: number }> => {
+    if (!nftAddress) return { rows: [], total: 0 };
 
-  const numPages = Math.ceil(totalToFetch / PAGE_SIZE);
-  const pagePromises = Array.from({ length: numPages }, (_, i) => {
-    const offset = i * PAGE_SIZE;
-    const endInclusive = Math.min(offset + PAGE_SIZE, totalToFetch) - 1;
-    let pq = supabase
+    let countQ = supabase
       .from('sensor_readings')
-      .select('id, timestamp, data')
-      .eq('nft_address', nftAddress)
-      .order('timestamp', { ascending: false })
-      .range(offset, endInclusive);
-    if (options?.since) pq = pq.gte('timestamp', options.since.toISOString());
-    if (options?.until) pq = pq.lte('timestamp', options.until.toISOString());
-    return pq;
-  });
+      .select('id', { count: 'exact', head: true })
+      .eq('nft_address', nftAddress);
+    if (options?.since) countQ = countQ.gte('timestamp', options.since.toISOString());
+    if (options?.until) countQ = countQ.lte('timestamp', options.until.toISOString());
 
-  // Fetch paginated rows and unfiltered global count in parallel. globalCount
-  // feeds the per-reading `sequence` field used by the UI to render the row's
-  // position in the sensor's full history. Without an active filter,
-  // globalCount === totalAvailable, but when since/until narrows the window
-  // they diverge and we want the global one on each row.
-  const globalCountQ = supabase
-    .from('sensor_readings')
-    .select('id', { count: 'exact', head: true })
-    .eq('nft_address', nftAddress);
+    const globalCountQ = supabase
+      .from('sensor_readings')
+      .select('id', { count: 'exact', head: true })
+      .eq('nft_address', nftAddress);
 
-  const [pageResults, globalCountRes] = await Promise.all([
-    Promise.all(pagePromises),
-    globalCountQ,
-  ]);
-
-  const rows: any[] = [];
-  for (const { data, error } of pageResults) {
-    if (error) {
-      console.error('getSensorReadings page error:', error.message);
-      continue;
+    const [windowedRes, globalRes] = await Promise.all([countQ, globalCountQ]);
+    if (windowedRes.error) {
+      console.error('getSensorReadings legacy count error:', windowedRes.error.message);
+      return { rows: [], total: globalRes.count ?? 0 };
     }
-    if (data) rows.push(...data);
-  }
+    const totalAvailable = windowedRes.count ?? 0;
+    const totalToFetch = Math.min(totalAvailable, target);
+    const globalTotal = globalRes.count ?? totalAvailable;
+    if (totalToFetch === 0) return { rows: [], total: globalTotal };
 
-  // Map PG rows to KV format, attaching global sequence. rows are DESC by time,
-  // so row[0] (newest within the window) maps to sequence = globalTotal.
-  const sensorType = sensor?.type || 'temperature';
-  const globalTotal = globalCountRes.count ?? totalAvailable;
-  const mapped = await Promise.all(rows.map(r => pgReadingToKvFormat(r, sensorId, sensorType)));
-  return mapped.map((reading, i) => ({ ...reading, sequence: globalTotal - i }));
+    const numPages = Math.ceil(totalToFetch / PAGE_SIZE);
+    const pagePromises = Array.from({ length: numPages }, (_, i) => {
+      const offset = i * PAGE_SIZE;
+      const endInclusive = Math.min(offset + PAGE_SIZE, totalToFetch) - 1;
+      let pq = supabase
+        .from('sensor_readings')
+        .select('id, timestamp, data')
+        .eq('nft_address', nftAddress)
+        .order('timestamp', { ascending: false })
+        .range(offset, endInclusive);
+      if (options?.since) pq = pq.gte('timestamp', options.since.toISOString());
+      if (options?.until) pq = pq.lte('timestamp', options.until.toISOString());
+      return pq;
+    });
+    const pageResults = await Promise.all(pagePromises);
+    const rows: any[] = [];
+    for (const { data, error } of pageResults) {
+      if (error) {
+        console.error('getSensorReadings legacy page error:', error.message);
+        continue;
+      }
+      if (data) rows.push(...data);
+    }
+    const sensorType = sensor?.type || 'temperature';
+    const mapped = await Promise.all(rows.map(r => pgReadingToKvFormat(r, sensorId, sensorType)));
+    return { rows: mapped, total: globalTotal };
+  };
+
+  // Envelope side: same shape as the unverified branch above. Single non-paged
+  // query capped at `target`; PostgREST's 1000-row default applies if target
+  // exceeds it. Acceptable because the union is dominated by the legacy side
+  // for sensors created before ADR-015 cutover, and post-cutover historical
+  // depth grows linearly with time so 1000 rows = ~16h at 1Hz, enough for
+  // typical chart windows.
+  const fetchEnvelopes = async (): Promise<{ rows: any[]; total: number }> => {
+    if (!deviceId) return { rows: [], total: 0 };
+
+    let q = supabase
+      .from('readings')
+      .select('id, time, event_type, data, signature')
+      .eq('device_id', deviceId)
+      .order('time', { ascending: false })
+      .limit(target);
+    if (options?.since) q = q.gte('time', options.since.toISOString());
+    if (options?.until) q = q.lte('time', options.until.toISOString());
+
+    const globalCountQ = supabase
+      .from('readings')
+      .select('id', { count: 'exact', head: true })
+      .eq('device_id', deviceId);
+
+    const [rowsRes, countRes] = await Promise.all([q, globalCountQ]);
+    if (rowsRes.error) {
+      console.error('getSensorReadings envelope error:', rowsRes.error.message);
+      return { rows: [], total: countRes.count ?? 0 };
+    }
+    const mapped = await Promise.all((rowsRes.data ?? []).map(r => envelopeRowToKvFormat(r, sensorId)));
+    return { rows: mapped, total: countRes.count ?? mapped.length };
+  };
+
+  const [legacy, envelope] = await Promise.all([fetchLegacy(), fetchEnvelopes()]);
+
+  // Merge DESC by timestamp and slice to limit. globalTotal feeds the
+  // per-reading `sequence` field — same prefix-of-DESC-list assumption as the
+  // unverified branch, valid here too because we fetch latest N from each side.
+  const merged = [...legacy.rows, ...envelope.rows].sort(
+    (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+  );
+  const sliced = options?.limit ? merged.slice(0, options.limit) : merged;
+  const globalTotal = legacy.total + envelope.total;
+  return sliced.map((reading, i) => ({ ...reading, sequence: globalTotal - i }));
 };
 
 // Count readings efficiently via PG (avoids fetching all rows)
@@ -365,22 +417,60 @@ const countSensorReadings = async (
     if (error) return 0;
     return count ?? 0;
   }
+  // Real sensors: union count of legacy `sensor_readings` (by nft_address)
+  // and ADR-010 envelope `readings` (by device_id). Mirrors getSensorReadings
+  // real-mode dispatch per ADR-015 step 2 — without this, public sensor pages
+  // for envelope-publishing sensors show totalReadingsCount=0.
   const nftAddress = await resolveNftAddress(sensorId, sensor);
-  if (!nftAddress) {
+  let deviceId: string | null = null;
+  if (sensor?.claimToken) {
+    const { data } = await supabase
+      .from('devices')
+      .select('id')
+      .eq('claim_token', sensor.claimToken)
+      .maybeSingle();
+    deviceId = data?.id ?? null;
+  }
+
+  if (!nftAddress && !deviceId) {
     let readings = await kv.getByPrefix(`reading:${sensorId}:`);
     if (options?.since) readings = readings.filter((r: any) => new Date(r.timestamp) >= options.since!);
     if (options?.until) readings = readings.filter((r: any) => new Date(r.timestamp) <= options.until!);
     return readings.length;
   }
-  let q = supabase
-    .from('sensor_readings')
-    .select('id', { count: 'exact', head: true })
-    .eq('nft_address', nftAddress);
-  if (options?.since) q = q.gte('timestamp', options.since.toISOString());
-  if (options?.until) q = q.lte('timestamp', options.until.toISOString());
-  const { count, error } = await q;
-  if (error) return 0;
-  return count ?? 0;
+
+  const legacyQ = nftAddress
+    ? (() => {
+        let q = supabase
+          .from('sensor_readings')
+          .select('id', { count: 'exact', head: true })
+          .eq('nft_address', nftAddress);
+        if (options?.since) q = q.gte('timestamp', options.since.toISOString());
+        if (options?.until) q = q.lte('timestamp', options.until.toISOString());
+        return q;
+      })()
+    : null;
+
+  const envelopeQ = deviceId
+    ? (() => {
+        let q = supabase
+          .from('readings')
+          .select('id', { count: 'exact', head: true })
+          .eq('device_id', deviceId);
+        if (options?.since) q = q.gte('time', options.since.toISOString());
+        if (options?.until) q = q.lte('time', options.until.toISOString());
+        return q;
+      })()
+    : null;
+
+  const [legacyRes, envelopeRes] = await Promise.all([
+    legacyQ ?? Promise.resolve({ count: 0, error: null }),
+    envelopeQ ?? Promise.resolve({ count: 0, error: null }),
+  ]);
+
+  const legacyCount = legacyRes.error ? 0 : (legacyRes.count ?? 0);
+  const envelopeCount = envelopeRes.error ? 0 : (envelopeRes.count ?? 0);
+  return legacyCount + envelopeCount;
 };
 
 // Helper to generate mock readings for a sensor
