@@ -17,7 +17,12 @@ export function Header() {
   const { user, signIn, signUp, signOut } = useAuth();
   // Auth controls only make sense inside an initiative (Edge Tracker).
   // The Insedge landing at "/" is org-level chrome where login has no scope.
-  const showAuth = location.pathname !== '/';
+  const isInsedge = location.pathname === '/';
+  const showAuth = !isInsedge;
+  // Wordmark reflects the active brand: umbrella on "/", initiative everywhere
+  // else. Logo click returns to that brand's home.
+  const wordmark = isInsedge ? 'INSEDGE' : 'EDGE TRACKER';
+  const wordmarkHref = isInsedge ? '/' : '/edgetracker';
   const [showAuthDialog, setShowAuthDialog] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -74,16 +79,16 @@ export function Header() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
             {/* Logo */}
-            <div 
+            <div
               className="flex items-center gap-3 cursor-pointer"
-              onClick={() => navigate('/')}
+              onClick={() => navigate(wordmarkHref)}
             >
               <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center">
                 <Zap className="w-5 h-5 text-primary-foreground" strokeWidth={2.5} fill="currentColor" />
               </div>
               <div>
                 <h1 className="text-lg tracking-tight" style={{ fontWeight: 600, color: 'var(--text-primary)' }}>
-                  INSEDGE
+                  {wordmark}
                 </h1>
               </div>
             </div>
