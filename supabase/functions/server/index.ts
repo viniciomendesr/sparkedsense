@@ -2645,64 +2645,6 @@ app.post("/server/reading", async (c) => {
   }
 });
 
-// GET /server/public/readings-v2/:sensorId
-// Returns raw envelopes for a device (public access for sensors with visibility='public').
-// KV sensor `id` ≠ `devices.id`; resolve via claim_token before filtering the readings table.
-app.get("/server/public/readings-v2/:sensorId", async (c) => {
-  try {
-    const sensorId = c.req.param('sensorId');
-    const limit = parseInt(c.req.query('limit') || '100');
-    const eventType = c.req.query('type');
-
-    const allSensors = await kv.getByPrefix('sensor:');
-    const sensor = allSensors.find((s: any) => s.id === sensorId);
-    if (!sensor) return c.json({ error: 'Sensor not found' }, 404);
-    if (sensor.visibility !== 'public') return c.json({ error: 'Sensor readings are not public' }, 403);
-
-    // Translate KV sensor id → devices.id.
-    // Real/mock sensors link via claim_token; unsigned_dev (ADR-012) links via
-    // devicePublicKey (no claim_token is ever issued for that mode).
-    let deviceId: string | null = null;
-    if (sensor.claimToken) {
-      const { data: dev } = await supabase
-        .from('devices')
-        .select('id')
-        .eq('claim_token', sensor.claimToken)
-        .maybeSingle();
-      if (dev?.id) deviceId = dev.id as string;
-    }
-    if (!deviceId && sensor.devicePublicKey) {
-      const { data: dev } = await supabase
-        .from('devices')
-        .select('id')
-        .eq('public_key', sensor.devicePublicKey)
-        .maybeSingle();
-      if (dev?.id) deviceId = dev.id as string;
-    }
-    if (!deviceId) {
-      // No linked real device (mock sensor or unclaimed); nothing in readings table to return
-      return c.json({ readings: [] });
-    }
-
-    let query = supabase
-      .from('readings')
-      .select('*')
-      .eq('device_id', deviceId)
-      .order('time', { ascending: false })
-      .limit(limit);
-
-    if (eventType) query = query.eq('event_type', eventType);
-
-    const { data, error } = await query;
-    if (error) return c.json({ error: error.message }, 500);
-
-    return c.json({ readings: data ?? [] });
-  } catch (error: any) {
-    console.error('GET /public/readings-v2 error:', error);
-    return c.json({ error: error.message || 'Internal server error' }, 500);
-  }
-});
-
 // GET /server/public/anchor-info — diagnostic: returns server wallet + cluster.
 // Lazy-imports Solana libs only when the endpoint is hit.
 app.get("/server/public/anchor-info", async (c) => {

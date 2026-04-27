@@ -15,7 +15,6 @@ import { SensorDetailPage } from "./pages/sensor-detail";
 import { PublicSensorDetailPage } from "./pages/public-sensor-detail";
 import { AuditPage } from "./pages/audit";
 import PublicSensorsPage from "./pages/public-sensors";
-import DemoClaroPage from "./pages/demo-claro";
 import { Sensor, Dataset } from "./lib/types";
 import { Toaster } from "./components/ui/sonner";
 import { Button } from "./components/ui/button";
@@ -334,7 +333,6 @@ function AppContent() {
             path="/public-sensors"
             element={<PublicSensorsPage />}
           />
-          <Route path="/demo-claro" element={<DemoClaroPage />} />
           <Route path="*" element={<HomeWrapper />} />
         </Routes>
       </main>

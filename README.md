@@ -156,11 +156,9 @@ Endpoints are exposed through Supabase Edge Functions.
 | `/public/sensors/featured` | GET | Featured sensors for homepage |
 | `/public/sensors/:id/hourly-merkle` | GET | Merkle root + leaves for the last hour |
 | `/public/sensors/:sensorId/merkle-proof/:leafIndex` | GET | Inclusion proof for a specific leaf |
-| `/public/readings/:sensorId` | GET | Legacy readings feed (paginated server-side, `?limit=N`) |
-| `/public/readings-v2/:sensorId` | GET | CloudEvents envelope feed (ADR-010), optional `?type=` filter |
+| `/public/readings/:sensorId` | GET | Public readings feed; unions legacy `sensor_readings` with the ADR-010 `readings` table per ADR-015. Paginated server-side via `?limit=N` |
 | `/server/register-device` | POST | Two-step secp256k1 challenge-response registration |
-| `/server/sensor-data` | POST | Signed reading ingestion (legacy path, dual-writes to the envelope feed) |
-| `/server/reading` | POST | CloudEvents envelope ingestion (ADR-010) |
+| `/server/reading` | POST | CloudEvents envelope ingestion (ADR-010, canonical) |
 | `/server/sensors/:id` | PUT | Owner-only: update `name`, `description`, or `visibility` (allowlist) |
 | `/server/sensors/:id/refresh-location` | POST | Owner-only: re-derive location label from stored lat/lng |
 | `/server/device-location` | POST | WiFi scan → geolocation lookup |
