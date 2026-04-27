@@ -1189,7 +1189,7 @@ app.post("/server/sensors/:id/refresh-location", async (c) => {
 
     const nomRes = await fetch(
       `https://nominatim.openstreetmap.org/reverse?format=json&lat=${sensor.latitude}&lon=${sensor.longitude}&zoom=18&addressdetails=1`,
-      { headers: { 'User-Agent': 'sparked-sense/1.0' } },
+      { headers: { 'User-Agent': 'edge-tracker/1.0' } },
     );
     if (!nomRes.ok) {
       return c.json({ error: 'Reverse geocoding failed' }, 502);
@@ -2458,7 +2458,7 @@ app.post("/server/sensor-data", async (c) => {
   return c.json({
     error: 'This endpoint was removed on 2026-04-27. Devices must publish CloudEvents envelopes to /server/reading per ADR-015.',
     code: 'gone',
-    migration: 'https://github.com/viniciomendesr/sparkedsense/blob/main/docs/adr/015-unify-ingestion-on-adr-010.md',
+    migration: 'https://github.com/viniciomendesr/edgetracker/blob/main/docs/adr/015-unify-ingestion-on-adr-010.md',
   }, 410);
 });
 
@@ -2467,7 +2467,7 @@ app.post("/server/sensor-data", async (c) => {
 // ======================
 
 // POST /server/reading
-// Accepts a CloudEvents 1.0 envelope with Sparked Sense signature extension.
+// Accepts a CloudEvents 1.0 envelope with the Edge Tracker signature extension.
 // No user JWT — device is authenticated via secp256k1 signature over canonical
 // JSON of the envelope (minus `signature`). Writes to the `readings` table.
 app.post("/server/reading", async (c) => {

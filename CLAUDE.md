@@ -4,11 +4,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Sparked Sense is an **open-source DePIN infrastructure platform**. It provides a generic, hardware-agnostic layer that connects commodity IoT devices (ESP8266/ESP32, Arduino-compatible boards) to off-chain storage and on-chain verification.
+This repository hosts **Edge Tracker**, an initiative under the **Insedge** open-source umbrella (Insedge = research umbrella for the layer where AI meets the physical world: sensors, microcontrollers, and edge ML on commodity hardware).
+
+Edge Tracker is an **open-source DePIN infrastructure platform**. It provides a generic, hardware-agnostic layer that connects commodity IoT devices (ESP8266/ESP32, Arduino-compatible boards) to off-chain storage and on-chain verification.
 
 The core value proposition: **anyone can participate in a decentralized physical infrastructure network using off-the-shelf hardware** — no proprietary devices required. The platform handles device identity (secp256k1 key pairs), data ingestion, cryptographic verification, dataset aggregation, Merkle proofs, and blockchain anchoring.
 
-Sparked Sense is **not** a sensor product, a dashboard, or a data analytics tool. It is infrastructure that different applications consume. Projects are already being developed on top of it, such as a **business/customer analytics** system that uses edge devices in commercial spaces (malls, retail stores) for foot traffic and consumer behavior inference via TinyML. Future applications may target smart cities, agriculture, environmental monitoring, or any domain where trustworthy physical-world data matters. The architecture must remain agnostic to:
+Edge Tracker is **not** a sensor product, a dashboard, or a data analytics tool. It is infrastructure that different applications consume. Projects are already being developed on top of it, such as a **business/customer analytics** system that uses edge devices in commercial spaces (malls, retail stores) for foot traffic and consumer behavior inference via TinyML. Future applications may target smart cities, agriculture, environmental monitoring, or any domain where trustworthy physical-world data matters. The architecture must remain agnostic to:
 - **Sensor type** — temperature, humidity, audio, image, air quality, foot traffic, or any future data source
 - **Vertical** — smart cities, retail analytics, agriculture, environmental monitoring, logistics, or any domain that needs trustworthy physical-world data
 - **Storage backend** — currently Supabase/PostgreSQL, but the platform should not assume a specific database
@@ -30,7 +32,9 @@ When making architectural or code decisions, preserve these properties:
 
 ## Current MVP Instance
 
-The live deployment at `sparkedsensemvp.vercel.app` is a **specific instantiation** of the platform for environmental sensing. It demonstrates the end-to-end flow but is not the product itself.
+The live deployment (linked from `insedge.org/edgetracker`) is a **specific instantiation** of the platform for environmental sensing. It demonstrates the end-to-end flow but is not the product itself.
+
+> **Note on legacy identifiers.** Despite the rebrand to Insedge / Edge Tracker, the protocol-level identifiers `io.sparkedsense.*` (CloudEvents event types), the `sparked-sense://` URI scheme used in Solana memos, and the `sparked-sense.dataset.v1` spec ID are **stable contracts** with deployed firmware and on-chain anchors. Do not rename them in passing — any migration requires a dedicated ADR (referencing ADRs 010 and 015) with versioned dual-support during the transition.
 
 Stack details, source file map, database schema, and environment variables are documented in `docs/`. Infer current technical choices from the codebase directly.
 
