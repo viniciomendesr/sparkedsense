@@ -1,52 +1,43 @@
-import { Globe } from 'lucide-react';
-import { Button } from './ui/button';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from './ui/dropdown-menu';
 import { getLocale, setLocale, locales } from '../paraglide/runtime';
 import { m } from '../paraglide/messages';
 
 const labels: Record<string, string> = {
-  en: 'English',
-  pt: 'Português',
+  en: 'EN',
+  pt: 'PT',
 };
 
-// Paraglide's setLocale defaults to reload: true so every t-call re-renders.
-// We accept the page reload — it's the simplest correctness path for an SPA
-// where dozens of components capture strings at module-eval time.
+// Segmented switch: both locales visible, active one filled. One click flips.
+// Plain native buttons (not the Radix-wrapped Button) to avoid the forwardRef
+// asChild ref warning and any portal/z-index quirks of the dropdown variant.
 export function LanguageSwitcher() {
   const current = getLocale();
 
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Button
-          variant="ghost"
-          size="icon"
-          aria-label={m.language_switcher_aria()}
-          className="h-9 w-9"
-        >
-          <Globe className="w-4 h-4" />
-          <span className="sr-only">{m.language_switcher_label()}</span>
-        </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end">
-        {locales.map((locale) => (
-          <DropdownMenuItem
+    <div
+      role="group"
+      aria-label={m.language_switcher_aria()}
+      className="inline-flex h-9 items-center rounded-md border border-border bg-card overflow-hidden"
+    >
+      {locales.map((locale) => {
+        const isActive = locale === current;
+        return (
+          <button
             key={locale}
+            type="button"
             onClick={() => {
-              if (locale !== current) setLocale(locale);
+              if (!isActive) setLocale(locale);
             }}
-            className={locale === current ? 'font-semibold' : ''}
+            aria-pressed={isActive}
+            className={`h-full px-3 text-xs font-mono tracking-wider transition-colors ${
+              isActive
+                ? 'bg-primary text-primary-foreground cursor-default'
+                : 'bg-transparent text-muted-foreground hover:bg-muted hover:text-foreground'
+            }`}
           >
-            {labels[locale] ?? locale}
-            {locale === current && <span className="ml-auto text-xs text-muted-foreground">●</span>}
-          </DropdownMenuItem>
-        ))}
-      </DropdownMenuContent>
-    </DropdownMenu>
+            {labels[locale] ?? locale.toUpperCase()}
+          </button>
+        );
+      })}
+    </div>
   );
 }
