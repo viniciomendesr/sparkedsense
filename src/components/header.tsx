@@ -79,7 +79,7 @@ export function Header() {
               </div>
               <div>
                 <h1 className="text-lg tracking-tight" style={{ fontWeight: 600, color: 'var(--text-primary)' }}>
-                  SPARKED
+                  INSEDGE
                 </h1>
               </div>
             </div>
@@ -122,7 +122,7 @@ export function Header() {
       <Dialog open={showAuthDialog} onOpenChange={setShowAuthDialog}>
         <DialogContent className="sm:max-w-md bg-card border-border">
           <DialogHeader>
-            <DialogTitle style={{ color: 'var(--text-primary)' }}>Welcome to Sparked Sense</DialogTitle>
+            <DialogTitle style={{ color: 'var(--text-primary)' }}>Welcome to Edge Tracker</DialogTitle>
             <DialogDescription style={{ color: 'var(--text-secondary)' }}>
               Sign in to access your IoT sensor dashboard
             </DialogDescription>

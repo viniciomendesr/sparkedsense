@@ -4,7 +4,7 @@ import { Badge } from '../components/ui/badge';
 import { ArrowRight, Zap, Cpu } from 'lucide-react';
 import { m } from '../paraglide/messages';
 
-export default function SparkedLandingPage() {
+export default function InsedgeLandingPage() {
   const navigate = useNavigate();
 
   return (
@@ -15,7 +15,7 @@ export default function SparkedLandingPage() {
           <div className="inline-flex items-center gap-2 px-3 py-2 rounded-full bg-primary/10 border border-primary/20 mb-6">
             <Cpu className="w-4 h-4 text-primary shrink-0" />
             <span className="text-xs sm:text-sm" style={{ color: 'var(--primary)' }}>
-              {m.sparked_eyebrow()}
+              {m.insedge_eyebrow()}
             </span>
           </div>
 
@@ -23,14 +23,14 @@ export default function SparkedLandingPage() {
             className="text-3xl sm:text-5xl mb-6"
             style={{ fontWeight: 600, lineHeight: '1.15', color: 'var(--text-primary)' }}
           >
-            {m.sparked_hero_title()}
+            {m.insedge_hero_title()}
           </h1>
 
           <p
             className="mb-8 max-w-2xl mx-auto text-base sm:text-lg"
             style={{ color: 'var(--text-secondary)', lineHeight: '1.6' }}
           >
-            {m.sparked_hero_subtitle()}
+            {m.insedge_hero_subtitle()}
           </p>
         </div>
       </section>
@@ -43,24 +43,24 @@ export default function SparkedLandingPage() {
               className="text-2xl sm:text-3xl mb-3"
               style={{ fontWeight: 600, color: 'var(--text-primary)' }}
             >
-              {m.sparked_initiatives_title()}
+              {m.insedge_initiatives_title()}
             </h2>
             <p
               className="text-sm sm:text-base"
               style={{ color: 'var(--text-secondary)' }}
             >
-              {m.sparked_initiatives_subtitle()}
+              {m.insedge_initiatives_subtitle()}
             </p>
           </div>
 
           <Card
             role="link"
             tabIndex={0}
-            onClick={() => navigate('/sparked-sense')}
+            onClick={() => navigate('/edge-tracker')}
             onKeyDown={(e) => {
               if (e.key === 'Enter' || e.key === ' ') {
                 e.preventDefault();
-                navigate('/sparked-sense');
+                navigate('/edge-tracker');
               }
             }}
             className="p-6 sm:p-8 bg-card border-border hover:border-primary/50 transition-all duration-200 group cursor-pointer"
@@ -79,20 +79,20 @@ export default function SparkedLandingPage() {
                     className="text-xl"
                     style={{ fontWeight: 600, color: 'var(--text-primary)' }}
                   >
-                    Sparked Sense
+                    Edge Tracker
                   </h3>
                   <Badge variant="outline" className="bg-success/10 text-success border-success/30">
-                    {m.sparked_status_live()}
+                    {m.insedge_status_live()}
                   </Badge>
                 </div>
                 <p
                   className="mb-4 text-sm sm:text-base"
                   style={{ color: 'var(--text-secondary)', lineHeight: '1.6' }}
                 >
-                  {m.sparked_sense_card_description()}
+                  {m.edge_tracker_card_description()}
                 </p>
                 <div className="flex items-center gap-2 text-sm text-primary group-hover:gap-3 transition-all">
-                  <span>{m.sparked_explore_initiative()}</span>
+                  <span>{m.insedge_explore_initiative()}</span>
                   <ArrowRight className="w-4 h-4" />
                 </div>
               </div>
@@ -103,7 +103,7 @@ export default function SparkedLandingPage() {
             className="text-center text-sm mt-8"
             style={{ color: 'var(--text-muted)' }}
           >
-            {m.sparked_more_initiatives_soon()}
+            {m.insedge_more_initiatives_soon()}
           </p>
         </div>
       </section>
@@ -115,13 +115,13 @@ export default function SparkedLandingPage() {
             className="text-xl sm:text-2xl mb-4"
             style={{ fontWeight: 600, color: 'var(--text-primary)' }}
           >
-            {m.sparked_about_title()}
+            {m.insedge_about_title()}
           </h2>
           <p
             className="text-sm sm:text-base"
             style={{ color: 'var(--text-secondary)', lineHeight: '1.7' }}
           >
-            {m.sparked_about_text()}
+            {m.insedge_about_text()}
           </p>
         </div>
       </section>

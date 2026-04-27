@@ -996,7 +996,7 @@ export function SensorDetailPage({
                   <strong>Dataset Creation Rules</strong>
                 </p>
                 <p style={{ fontSize: '0.875rem', color: 'var(--text-secondary)' }}>
-                  Only data generated within Sparked Sense can be grouped into datasets. External datasets are not yet supported.
+                  Only data generated within Edge Tracker can be grouped into datasets. External datasets are not yet supported.
                 </p>
               </div>
             </div>

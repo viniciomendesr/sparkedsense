@@ -934,7 +934,7 @@ export function RegisterSensorDialog({ open, onOpenChange, onRegister }: Registe
                       <li>1. Copy the claim token above</li>
                       <li>2. Add it to your device firmware configuration</li>
                       <li>3. The device will use this token to sign and authenticate readings</li>
-                      <li>4. Start sending data to the Sparked Sense API endpoint</li>
+                      <li>4. Start sending data to the Edge Tracker API endpoint</li>
                       <li>5. First verified reading will trigger NFT minting to your wallet</li>
                     </>
                   ) : mode === 'unverified' ? (

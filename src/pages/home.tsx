@@ -576,7 +576,7 @@ export function HomePage({ onGetStarted }: HomePageProps) {
                   Coordinator of the Future Factory 4.0 Lab • PhD in Production Engineering
                 </p>
                 <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
-                  Guiding methodological and technical validation for Sparked Sense
+                  Guiding methodological and technical validation for Edge Tracker
                 </p>
               </div>
             </Card>

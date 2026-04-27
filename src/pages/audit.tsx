@@ -960,7 +960,7 @@ export function AuditPage({ dataset: propDataset, sensor: propSensor, onBack }: 
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
           <div className="text-center">
             <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
-              Powered by <span className="text-primary">Sparked Sense</span> — An open infrastructure for verifiable physical data
+              Powered by <span className="text-primary">Edge Tracker</span> — An open infrastructure for verifiable physical data
             </p>
           </div>
         </div>

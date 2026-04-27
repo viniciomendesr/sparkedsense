@@ -1,14 +1,18 @@
-# Sparked Sense
+# Insedge
 
 > **Open-source Physical AI infrastructure for commodity IoT hardware.**
 
-Connect any microcontroller (ESP8266, ESP32, Arduino-compatible) to a verifiable data layer: cryptographic device identity, signed reading ingestion, ML-inference-aware event types, Merkle-anchored datasets on Solana, public audit pages — no proprietary devices required.
+Insedge is an open-source research umbrella for the layer where AI meets the physical world: sensors, microcontrollers, and edge ML running on commodity hardware. Each initiative is a focused experiment in that direction.
 
-🔗 [Live MVP](https://sparkedsensemvp.vercel.app/) · 🐦 [@sparkedsense](https://x.com/sparkedsense)
+🔗 [Live](https://sparkedsensemvp.vercel.app/) · 🐦 [@sparkedsense](https://x.com/sparkedsense)
 
 ---
 
-## What it does
+## Initiatives
+
+### Edge Tracker
+
+Infrastructure for verifiable physical-world data. Connect any commodity microcontroller (ESP8266, ESP32, Arduino-compatible) to a verifiable data layer: cryptographic device identity, signed reading ingestion, ML-inference-aware event types, Merkle-anchored datasets on Solana, public audit pages — no proprietary devices required.
 
 - **Device identity** — secp256k1 key pair generated on-device, persisted in EEPROM
 - **Signed ingestion** — every event is a CloudEvents 1.0 envelope verified before storage ([ADR-010](docs/adr/010-sensor-agnostic-ingestion-envelope.md))
@@ -18,7 +22,7 @@ Connect any microcontroller (ESP8266, ESP32, Arduino-compatible) to a verifiable
 - **Public audit** — anyone can verify integrity without trusting the operator
 - **WiFi geolocation** — devices locate themselves via BSSID scan against Apple's WiFi DB
 - **Real-time dashboards** — Postgres CDC pushes readings live to connected clients
-- **Bilingual UI** — PT-BR / EN via [Paraglide JS](https://inlang.com/m/gerre34r/library-inlang-paraglideJs) (compile-time, type-safe)
+- **Bilingual UI** — PT-BR / EN via [Paraglide JS](https://inlang.com/m/gerre34r/library-inlang-paraglideJs)
 
 ## Stack
 
@@ -59,7 +63,7 @@ SOLANA_SERVER_SECRET_KEY_BASE58=...
 
 ## License
 
-MIT © 2025 Sparked Sense Project
+MIT © 2025 Insedge Project
 
 ## Contributing
 

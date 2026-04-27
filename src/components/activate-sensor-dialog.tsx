@@ -99,7 +99,7 @@ export function ActivateSensorDialog({ open, onOpenChange, onComplete }: Activat
                     Welcome to Sensor Activation
                   </h3>
                   <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
-                    Because this is an MVP, you'll need to manually upload and edit your device code to connect it to the Sparked Sense infrastructure.
+                    Because this is an MVP, you'll need to manually upload and edit your device code to connect it to the Edge Tracker infrastructure.
                   </p>
                 </div>
 
@@ -326,7 +326,7 @@ const char* password = "YOUR_WIFI_PASSWORD";`}
 
                 <div className="p-3 rounded-lg bg-success/10 border border-success/30">
                   <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
-                    ✓ After successful upload, your device should start transmitting initial data to Sparked Sense.
+                    ✓ After successful upload, your device should start transmitting initial data to Edge Tracker.
                   </p>
                 </div>
               </div>
@@ -369,7 +369,7 @@ const char* password = "YOUR_WIFI_PASSWORD";`}
                 <div className="p-4 rounded-lg bg-muted/50 border border-border">
                   <Label className="mb-2 block">Example Serial Monitor Output</Label>
                   <pre className="text-xs font-mono" style={{ color: 'var(--text-primary)', fontFamily: 'JetBrains Mono, monospace' }}>
-{`=== Sparked Sense Temperature Sensor ===
+{`=== Edge Tracker Temperature Sensor ===
 CLAIM TOKEN: SPARKED-A1B2C3D4E5F6
 Connecting to WiFi....
 WiFi Connected!
@@ -412,7 +412,7 @@ Temperature: 23.5 °C`}
 
                 <div className="p-4 rounded-lg bg-success/10 border border-success/30">
                   <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
-                    ✓ Your device is now active and transmitting data to Sparked Sense!
+                    ✓ Your device is now active and transmitting data to Edge Tracker!
                   </p>
                 </div>
 
