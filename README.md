@@ -57,26 +57,6 @@ SOLANA_SERVER_SECRET_KEY_BASE58=...
 | `/server/reading` | POST | CloudEvents envelope ingestion (canonical, ADR-010) |
 | `/server/device-location` | POST | WiFi scan → geolocation |
 
-## Documentation
-
-- [`docs/adr/`](./docs/adr/) — Architecture Decision Records (Michael Nygard format)
-- [`docs/timeline.md`](./docs/timeline.md) — chronological history (Keep a Changelog)
-- [`docs/melhorias-estruturais.md`](./docs/melhorias-estruturais.md) — recognized debt
-- [`CLAUDE.md`](./CLAUDE.md) — design intent and contributor guidance
-
-## Team
-
-**Advisors** — Prof. Marcos Zancul (Manufacturing Systems & Product Development, Poli-USP) · Otávio Vacari (Computer Engineer, Poli-USP, M.Sc. Applied Cryptography)
-
-**Core**
-
-| Member | Role |
-|---|---|
-| **Vinício Mendes** | Product Lead — Production Engineering @ Poli-USP, founder of FireTheBox |
-| **Nicolas Gabriel** | Lead Developer — Web3, Supabase, Frontend |
-| **Pedro Goularte** | Infrastructure — distributed systems, backend |
-| **Paulo Ricardo** | Communication — Production Engineering @ UFJF |
-
 ## License
 
 MIT © 2025 Sparked Sense Project
