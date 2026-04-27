@@ -35,8 +35,6 @@
   "edge_tracker_card_description": "Infraestrutura para dados físicos verificáveis. Identidade criptográfica de dispositivo, ingestão assinada e datasets ancorados em Merkle na Solana — conecte qualquer microcontrolador comum (ESP8266/ESP32) sem hardware proprietário nem intermediários de confiança.",
   "insedge_explore_initiative": "Explorar iniciativa",
   "insedge_more_initiatives_soon": "Mais iniciativas em desenvolvimento.",
-  "insedge_about_title": "Sobre",
-  "insedge_about_text": "A Insedge é um guarda-chuva de pesquisa open source originado na Poli-USP. O trabalho começa acadêmico mas os artefatos viram infraestrutura de produção — o objetivo é pesquisa que outras pessoas podem rodar, forkar e estender, não papers que ficam na prateleira.",
 
   "home_steps_title": "Como funciona",
   "home_steps_1_title": "Entrar",

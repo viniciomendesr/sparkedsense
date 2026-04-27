@@ -8,11 +8,11 @@ export default function InsedgeLandingPage() {
   const navigate = useNavigate();
 
   return (
-    <div className="min-h-[calc(100vh-8rem)] flex flex-col">
-      {/* Hero */}
-      <section className="flex-1 flex items-center justify-center px-4 sm:px-6 py-16 sm:py-24">
+    <div className="flex flex-col">
+      {/* Hero — content-driven height, no viewport stretch */}
+      <section className="px-4 sm:px-6 py-12 sm:py-16">
         <div className="max-w-3xl mx-auto text-center">
-          <div className="inline-flex items-center gap-2 px-3 py-2 rounded-full bg-primary/10 border border-primary/20 mb-6">
+          <div className="inline-flex items-center gap-2 px-3 py-2 rounded-full bg-primary/10 border border-primary/20 mb-5">
             <Cpu className="w-4 h-4 text-primary shrink-0" />
             <span className="text-xs sm:text-sm" style={{ color: 'var(--primary)' }}>
               {m.insedge_eyebrow()}
@@ -20,14 +20,14 @@ export default function InsedgeLandingPage() {
           </div>
 
           <h1
-            className="text-3xl sm:text-5xl mb-6"
+            className="text-3xl sm:text-5xl mb-5"
             style={{ fontWeight: 600, lineHeight: '1.15', color: 'var(--text-primary)' }}
           >
             {m.insedge_hero_title()}
           </h1>
 
           <p
-            className="mb-8 max-w-2xl mx-auto text-base sm:text-lg"
+            className="max-w-2xl mx-auto text-base sm:text-lg"
             style={{ color: 'var(--text-secondary)', lineHeight: '1.6' }}
           >
             {m.insedge_hero_subtitle()}
@@ -36,7 +36,7 @@ export default function InsedgeLandingPage() {
       </section>
 
       {/* Initiatives */}
-      <section className="px-4 sm:px-6 py-12 sm:py-16 border-t border-border">
+      <section className="px-4 sm:px-6 pt-8 sm:pt-10 pb-12 sm:pb-16 border-t border-border">
         <div className="max-w-5xl mx-auto">
           <div className="text-center mb-10">
             <h2
@@ -104,24 +104,6 @@ export default function InsedgeLandingPage() {
             style={{ color: 'var(--text-muted)' }}
           >
             {m.insedge_more_initiatives_soon()}
-          </p>
-        </div>
-      </section>
-
-      {/* About */}
-      <section className="px-4 sm:px-6 py-12 sm:py-16 border-t border-border bg-card/30">
-        <div className="max-w-3xl mx-auto text-center">
-          <h2
-            className="text-xl sm:text-2xl mb-4"
-            style={{ fontWeight: 600, color: 'var(--text-primary)' }}
-          >
-            {m.insedge_about_title()}
-          </h2>
-          <p
-            className="text-sm sm:text-base"
-            style={{ color: 'var(--text-secondary)', lineHeight: '1.7' }}
-          >
-            {m.insedge_about_text()}
           </p>
         </div>
       </section>
