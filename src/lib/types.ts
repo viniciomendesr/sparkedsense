@@ -97,13 +97,9 @@ export interface SensorMetrics {
   name: string;
   type: string;
   status: string;
-  lastReading?: Reading;
-  publicDatasetsCount: number;
   totalReadingsCount: number;
-  verifiedDatasetsCount: number;
-  totalVerified: number;
+  totalDataBytes?: number;
   lastActivity?: Date;
-  hourlyMerkleRoot?: string;
 }
 
 export interface LiveData {

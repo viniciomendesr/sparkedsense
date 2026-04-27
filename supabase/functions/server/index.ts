@@ -2171,68 +2171,44 @@ app.get("/server/public/sensors", async (c) => {
   }
 });
 
-// Get top 3 featured public sensors with metrics
+// Top 3 public sensors for the home page card.
+//
+// Sort key is `sensor.lastReading.timestamp` (mirrored on every ingest into the
+// sensor KV row), so we can rank without hitting Postgres. Only the 3 sensors
+// that will actually render get a totalReadingsCount union HEAD count — sensors
+// that fall off the top-3 cost zero DB work.
+//
+// Previous version computed an hourly Merkle root, last-reading lookups, and
+// a public-datasets KV scan per sensor. None of those fields were rendered on
+// the card; removed alongside the corresponding fields in src/lib/types.ts.
 app.get("/server/public/sensors/featured", async (c) => {
   try {
     const allSensors = await kv.getByPrefix('sensor:');
-    console.log(`Processing ${allSensors.length} sensors for featured list`);
-    const sensorsWithMetrics = [];
-    
-    for (const sensor of allSensors) {
-      // Only include sensors with visibility='public'
-      if (sensor.visibility !== 'public') {
-        continue;
-      }
-      
-      const datasets = await kv.getByPrefix(`dataset:${sensor.id}:`);
-      const publicDatasets = datasets.filter((d: any) => d.isPublic === true);
-      
-      if (true) { // Always include public sensors, even without datasets
-        const [lastReadings, totalReadingsCount] = await Promise.all([
-          getSensorReadings(sensor.id, sensor, { limit: 1 }),
-          countSensorReadings(sensor.id, sensor),
-        ]);
-        const verifiedDatasets = publicDatasets.filter((d: any) => d.status === 'anchored');
 
-        // Calculate total verified (sum of all dataset accesses)
-        const totalVerified = datasets.reduce((sum: number, d: any) => sum + (d.accessCount || 0), 0);
-
-        // Calculate hourly Merkle root
-        let hourlyMerkleRoot = null;
-        try {
-          const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
-          const lastHourReadings = await getSensorReadings(sensor.id, sensor, { since: oneHourAgo });
-          const featuredTree = await buildMerkleTreeFromReadings(lastHourReadings);
-          hourlyMerkleRoot = featuredTree.root;
-        } catch (merkleError) {
-          console.error('Failed to compute Merkle root for featured sensor:', sensor.id, merkleError);
-        }
-
-        sensorsWithMetrics.push({
-          id: sensor.id,
-          name: sensor.name,
-          type: sensor.type,
-          status: sensor.status,
-          lastReading: lastReadings[0] || null,
-          publicDatasetsCount: publicDatasets.length,
-          totalReadingsCount,
-          totalDataBytes: totalReadingsCount * AVG_READING_BYTES,
-          verifiedDatasetsCount: verifiedDatasets.length,
-          totalVerified,
-          hourlyMerkleRoot,
-          lastActivity: lastReadings[0]?.timestamp || sensor.createdAt,
-        });
-      }
-    }
-    
-    console.log(`Found ${sensorsWithMetrics.length} sensors with public datasets`);
-    
-    // Sort by activity and take top 3
-    const featured = sensorsWithMetrics
-      .sort((a, b) => new Date(b.lastActivity).getTime() - new Date(a.lastActivity).getTime())
+    const top3 = allSensors
+      .filter((s: any) => s.visibility === 'public')
+      .map((sensor: any) => ({
+        sensor,
+        lastActivity: sensor.lastReading?.timestamp ?? sensor.createdAt,
+      }))
+      .sort((a: any, b: any) =>
+        new Date(b.lastActivity).getTime() - new Date(a.lastActivity).getTime(),
+      )
       .slice(0, 3);
 
-    console.log(`Returning ${featured.length} featured sensors`);
+    const featured = await Promise.all(top3.map(async ({ sensor, lastActivity }: any) => {
+      const totalReadingsCount = await countSensorReadings(sensor.id, sensor);
+      return {
+        id: sensor.id,
+        name: sensor.name,
+        type: sensor.type,
+        status: sensor.status,
+        totalReadingsCount,
+        totalDataBytes: totalReadingsCount * AVG_READING_BYTES,
+        lastActivity,
+      };
+    }));
+
     return c.json({ sensors: featured });
   } catch (error) {
     console.error('Failed to fetch featured sensors:', error);
