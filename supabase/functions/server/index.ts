@@ -87,13 +87,6 @@ const resolveNftAddress = async (sensorId: string, sensor: any): Promise<string 
   return device?.nft_address || null;
 };
 
-// ADR-014: backwards-compat shim. Old KV records have mode 'unsigned_dev' (ADR-012
-// naming); new records write 'unverified'. All read paths normalize on the way
-// out so downstream code only ever sees the new value. Eventually a one-time
-// migration script will rewrite the KV rows and this helper can be removed.
-const isUnverifiedMode = (mode: any): boolean =>
-  mode === 'unverified' || mode === 'unsigned_dev';
-
 // ADR-014: resolve sensor (mode=unverified) → devices.id via devicePublicKey.
 // Unverified sensors don't have a claim_token (mint hasn't happened), so we
 // match on the raw pubkey the frontend stored when calling register-device Step 1.
@@ -214,8 +207,7 @@ const getSensorReadings = async (
 
   // ADR-014: unverified sensors live in the `readings` table (ADR-010 envelopes),
   // keyed by device_id not nft_address. Resolve via devicePublicKey and query.
-  // isUnverifiedMode also matches the legacy 'unsigned_dev' KV value (backwards-compat).
-  if (isUnverifiedMode(sensor?.mode)) {
+  if (sensor?.mode === 'unverified') {
     const deviceId = await resolveDeviceIdForUnverified(sensor);
     if (!deviceId) return [];
 
@@ -403,8 +395,7 @@ const countSensorReadings = async (
     return readings.length;
   }
   // ADR-014: unverified → count rows in `readings` table by device_id.
-  // isUnverifiedMode matches both the new 'unverified' and the legacy 'unsigned_dev'.
-  if (isUnverifiedMode(sensor?.mode)) {
+  if (sensor?.mode === 'unverified') {
     const deviceId = await resolveDeviceIdForUnverified(sensor);
     if (!deviceId) return 0;
     let q = supabase
@@ -531,59 +522,6 @@ const getUserFromToken = async (request: Request) => {
 // Health check endpoint
 app.get("/server/health", (c) => {
   return c.json({ status: "ok" });
-});
-
-// ADR-014 one-shot migration: rewrite legacy KV records where mode='unsigned_dev'
-// to mode='unverified'. Idempotent — running it again is a no-op once converged.
-// Once verified, the isUnverifiedMode() shim can be dropped (search index.ts).
-//
-// Auth: gated by a shared header so it's not accidentally hit by random traffic;
-// the operation only normalizes a name and never destroys data, so a knowledge
-// gate is sufficient for a single-operator project. For multi-tenant deployments
-// upgrade this to admin-role JWT verification.
-app.post("/server/admin/migrate-unverified-mode", async (c) => {
-  if (c.req.header('X-Admin-Migration') !== 'adr-014-mode-rename') {
-    return c.json({ error: 'Missing X-Admin-Migration header' }, 403);
-  }
-
-  try {
-    const { data: rows, error } = await supabase
-      .from('kv_store_4a89e1c9')
-      .select('key, value')
-      .like('key', 'sensor:%');
-
-    if (error) return c.json({ error: error.message }, 500);
-
-    const candidates = (rows ?? []).filter((r: any) => r.value?.mode === 'unsigned_dev');
-    let updated = 0;
-    const failures: Array<{ key: string; error: string }> = [];
-
-    for (const r of candidates as Array<{ key: string; value: any }>) {
-      const newValue = { ...r.value, mode: 'unverified' };
-      const { error: updErr } = await supabase
-        .from('kv_store_4a89e1c9')
-        .update({ value: newValue })
-        .eq('key', r.key);
-      if (updErr) {
-        console.error(`Migration failed for ${r.key}:`, updErr.message);
-        failures.push({ key: r.key, error: updErr.message });
-        continue;
-      }
-      updated++;
-    }
-
-    console.log(`✅ ADR-014 KV migration: scanned=${rows?.length ?? 0} candidates=${candidates.length} updated=${updated}`);
-
-    return c.json({
-      scanned: rows?.length ?? 0,
-      candidates: candidates.length,
-      updated,
-      failures,
-    });
-  } catch (err: any) {
-    console.error('Migration error:', err);
-    return c.json({ error: err.message || 'Migration failed' }, 500);
-  }
 });
 
 // ======================
@@ -749,17 +687,6 @@ app.post("/server/sensors/retrieve-claim-token", async (c) => {
     crypto.getRandomValues(tokenBytes);
     const claim_token = `SPARKED-${Array.from(tokenBytes).map(b => b.toString(16).padStart(2, '0')).join('').toUpperCase().substring(0, 12)}`;
 
-    // Store the association in KV store for future reference
-    const tokenKey = `claim_token:${user.id}:${mac_address}`;
-    await kv.set(tokenKey, {
-      claim_token,
-      wallet_public_key,
-      device_public_key,
-      mac_address,
-      user_id: user.id,
-      created_at: new Date().toISOString(),
-    });
-
     return c.json({ claim_token });
   } catch (error) {
     console.error('Failed to retrieve claim token:', error);
@@ -871,11 +798,7 @@ app.post("/server/sensors", async (c) => {
 
     const { name, type, description, visibility, mode, claimToken, walletPublicKey, devicePublicKey } = await c.req.json();
 
-    // ADR-014: accept the legacy 'unsigned_dev' alias on input but normalize to
-    // 'unverified' for storage. Eventually the alias acceptance can be dropped
-    // once all clients have been redeployed.
-    const rawMode = mode || 'real';
-    const resolvedMode = rawMode === 'unsigned_dev' ? 'unverified' : rawMode;
+    const resolvedMode = mode || 'real';
     const VALID_MODES = ['real', 'mock', 'unverified'] as const;
     if (!VALID_MODES.includes(resolvedMode)) {
       return c.json({ error: `Invalid mode: ${resolvedMode}. Expected one of ${VALID_MODES.join(', ')}` }, 400);
@@ -991,9 +914,7 @@ app.put("/server/sensors/:id", async (c) => {
     const body = await c.req.json();
 
     const existingForMode = await kv.get(`sensor:${user.id}:${id}`);
-    // ADR-014: isUnverifiedMode handles both the new 'unverified' value and the
-    // legacy 'unsigned_dev' for KV records that haven't been migrated yet.
-    const editable: readonly string[] = isUnverifiedMode(existingForMode?.mode)
+    const editable: readonly string[] = existingForMode?.mode === 'unverified'
       ? [...USER_EDITABLE_SENSOR_FIELDS, ...UNVERIFIED_EXTRA_EDITABLE_FIELDS]
       : USER_EDITABLE_SENSOR_FIELDS;
 
@@ -1165,7 +1086,7 @@ app.post("/server/sensors/:id/mint", async (c) => {
     if (!sensor) {
       return c.json({ error: 'Sensor not found' }, 404);
     }
-    if (!isUnverifiedMode(sensor.mode)) {
+    if (sensor.mode !== 'unverified') {
       return c.json({
         error: `Mint only applies to unverified sensors (current mode: ${sensor.mode})`,
         code: 'mint_invalid_mode',
@@ -1560,7 +1481,7 @@ app.post("/server/datasets", async (c) => {
     // sensors we also break down signed vs unsigned event counts so auditors
     // know what fraction of the dataset carries cryptographic attestation.
     const mintStatus: 'real' | 'unverified' | 'mock' =
-      isUnverifiedMode(sensor?.mode) ? 'unverified' : (sensor?.mode === 'mock' ? 'mock' : 'real');
+      sensor?.mode === 'unverified' ? 'unverified' : (sensor?.mode === 'mock' ? 'mock' : 'real');
 
     let signatureComposition: { verified: number; unsigned: number } | undefined;
     if (mintStatus === 'unverified') {
@@ -2384,34 +2305,11 @@ app.post("/server/internal/generate-mock-data", async (c) => {
   }
 });
 
-// Start periodic mock data generation (every 5 seconds)
-setInterval(async () => {
-  try {
-    const allSensors = await kv.getByPrefix('sensor:');
-    
-    if (!allSensors || allSensors.length === 0) {
-      return; // No sensors found, skip this cycle
-    }
-    
-    const mockSensors = allSensors.filter((s: any) => s.mode === 'mock' && s.status === 'active');
-    
-    if (mockSensors.length > 0) {
-      console.log(`Auto-generating mock data for ${mockSensors.length} active mock sensors`);
-      
-      for (const sensor of mockSensors) {
-        try {
-          await generateMockReading(sensor);
-        } catch (sensorError) {
-          console.error(`Failed to generate reading for sensor ${sensor.id}:`, sensorError);
-          // Continue with next sensor instead of failing entire batch
-        }
-      }
-    }
-  } catch (error) {
-    // Log error but don't crash - database might be temporarily unavailable
-    console.error('Error in periodic mock data generation:', error instanceof Error ? error.message : String(error));
-  }
-}, 5000); // Every 5 seconds
+// Mock-mode sensor data is generated on-demand via POST /server/internal/generate-mock-data.
+// The previous setInterval that scanned every sensor every 5s was wasteful at all scales:
+// it issued a kv.getByPrefix('sensor:') per tick whether or not any mock sensor existed, and
+// edge-runtime intervals only fire while a worker is alive (driven by unrelated invocations),
+// making the cadence non-deterministic anyway.
 
 // ======================
 // Device Registration Routes (ESP8266 physical devices - no user JWT required)
@@ -2674,7 +2572,7 @@ app.post("/server/reading", async (c) => {
         // Only fills fields that are still empty — once a user edits location via
         // the UI, their value is authoritative and we never overwrite it. `real`
         // sensors go through the signed-geolocation path instead, so we gate by mode.
-        if (isUnverifiedMode(linkedSensor.mode)) {
+        if (linkedSensor.mode === 'unverified') {
           const envAny = envelope as unknown as Record<string, unknown>;
           const envLat = typeof envAny.latitude === 'number' ? envAny.latitude as number : null;
           const envLng = typeof envAny.longitude === 'number' ? envAny.longitude as number : null;
