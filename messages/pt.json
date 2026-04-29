@@ -1,10 +1,10 @@
 {
   "$schema": "https://inlang.com/schema/inlang-message-format",
 
-  "home_hero_eyebrow": "Infraestrutura Web3 para validação de dados IoT",
-  "home_hero_title_lead": "Transforme sensores físicos em",
-  "home_hero_title_highlight": "Fluxos de dados verificáveis",
-  "home_hero_subtitle": "O Edge Tracker conecta sensores IoT diretamente à blockchain Solana, transformando medições físicas em dados auditáveis e economicamente valiosos sem intermediários centralizados.",
+  "home_hero_eyebrow": "Saídas verificáveis de dispositivos edge",
+  "home_hero_title_lead": "Ancore qualquer sinal edge",
+  "home_hero_title_highlight": "on-chain",
+  "home_hero_subtitle": "O Edge Tracker assina e ancora saídas de nós edge independentes na Solana — de leituras de sensores a inferências locais de IA. Identidade criptográfica de dispositivo, ingestão assinada e datasets ancorados via Merkle. Sem hardware proprietário, sem intermediários confiáveis.",
   "home_hero_cta_dashboard": "Ir para o painel",
   "home_hero_cta_signin": "Entrar para começar",
   "home_hero_cta_public_sensors": "Ver sensores públicos",
@@ -30,7 +30,7 @@
   "insedge_initiatives_title": "Ferramentas",
   "insedge_initiatives_subtitle": "No que estamos trabalhando, em código aberto.",
   "insedge_status_live": "Ativo",
-  "edge_tracker_card_description": "Infraestrutura para dados físicos verificáveis. Identidade criptográfica de dispositivo, ingestão assinada e datasets ancorados em Merkle na Solana — conecte qualquer microcontrolador comum (ESP8266/ESP32) sem hardware proprietário nem intermediários de confiança.",
+  "edge_tracker_card_description": "Infraestrutura para nós de IA edge independentes compartilharem inferências verificáveis. Cada nó assina suas saídas na origem, os pares verificam sem um coordenador e os resultados ficam ancorados na Solana. Roda em microcontroladores comuns, sem hardware proprietário e sem intermediários confiáveis.",
   "insedge_explore_initiative": "Explorar o projeto",
   "insedge_more_initiatives_soon": "Mais ferramentas em desenvolvimento.",
   "insedge_meta_status": "Status",

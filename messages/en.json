@@ -1,10 +1,10 @@
 {
   "$schema": "https://inlang.com/schema/inlang-message-format",
 
-  "home_hero_eyebrow": "Web3 Infrastructure for IoT Data Validation",
-  "home_hero_title_lead": "Turn real-world sensors into",
-  "home_hero_title_highlight": "Verifiable data streams",
-  "home_hero_subtitle": "Edge Tracker connects IoT sensors directly to the Solana blockchain, transforming physical measurements into auditable, economically valuable data without centralized intermediaries.",
+  "home_hero_eyebrow": "Verifiable outputs from edge devices",
+  "home_hero_title_lead": "Anchor any edge signal",
+  "home_hero_title_highlight": "on-chain",
+  "home_hero_subtitle": "Edge Tracker signs and anchors outputs from independent edge nodes on Solana, from sensor readings to local AI inferences. Cryptographic device identity, signed ingestion, Merkle-anchored datasets. No proprietary hardware, no trusted intermediaries.",
   "home_hero_cta_dashboard": "Go to Dashboard",
   "home_hero_cta_signin": "Sign In to Get Started",
   "home_hero_cta_public_sensors": "View public sensors",
@@ -30,7 +30,7 @@
   "insedge_initiatives_title": "Tools",
   "insedge_initiatives_subtitle": "What we're working on, in the open.",
   "insedge_status_live": "Live",
-  "edge_tracker_card_description": "Infrastructure for verifiable physical-world data. Cryptographic device identity, signed ingestion, and Merkle-anchored datasets on Solana — connect any commodity microcontroller (ESP8266/ESP32) without proprietary hardware or trusted intermediaries.",
+  "edge_tracker_card_description": "Infrastructure for independent edge AI nodes to share verifiable inferences. Each node signs its outputs at the source, peers verify without a coordinator, and results anchor to Solana. Runs on commodity microcontrollers, no proprietary hardware, no trusted middlemen.",
   "insedge_explore_initiative": "Explore the project",
   "insedge_more_initiatives_soon": "More tools in development.",
   "insedge_meta_status": "Status",
