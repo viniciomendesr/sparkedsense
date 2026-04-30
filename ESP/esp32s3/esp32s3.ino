@@ -128,6 +128,14 @@ static const int UNKNOWN_STABILITY_FRAMES = 2;
 // ter margem contra drift de clock e evitar 429 ocasional.
 static const unsigned long PUBLISH_COOLDOWN_MS = 1200;
 
+// Refractory específico de "claro". A janela deslizante do Edge Impulse
+// re-classifica os mesmos ~1s de áudio em 2-3 frames consecutivos: uma única
+// elocução produz claro=0.88, depois 0.82, depois um tail com claro=0.30 que
+// ainda passa do threshold (0.30, deliberadamente baixo pra demo). Resultado:
+// 1 fala vira 2-3 POSTs idênticos. 3s cobrem a duração típica de uma fala +
+// reverberação curta sem suprimir uma segunda elocução intencional.
+static const unsigned long CLARO_REFRACTORY_MS = 3000;
+
 // Índices das classes do modelo (ordem fixa pelo treino no Edge Impulse)
 #define CLASS_IDX_CLARO   0
 #define CLASS_IDX_NOISE   1
@@ -142,6 +150,7 @@ static int16_t  audio_slice[SLICE_SIZE];
 static int32_t  raw_i2s[SLICE_SIZE];
 static signal_t audio_signal;
 static unsigned long last_publish_ms = 0;
+static unsigned long last_claro_publish_ms = 0;  // refractory anti-replay de claro
 static int unknown_streak = 0;  // ADR-012 stability gate: unknown consecutive frames
 static bool ntp_synced = false;
 
@@ -555,9 +564,15 @@ void loop() {
 
   if (claro_prob >= PUBLISH_THRESHOLD_CLARO) {
     // Claro passou do threshold — publica claro, mesmo que unknown/noise sejam
-    // argmax nesse frame. Prioriza a keyword alvo da demo.
-    publish_idx  = CLASS_IDX_CLARO;
-    publish_prob = claro_prob;
+    // argmax nesse frame. Prioriza a keyword alvo da demo. Mas suprime se
+    // estamos no refractory de uma publicação recente (mesma elocução re-vista
+    // pela janela deslizante do EI).
+    if (millis() - last_claro_publish_ms < CLARO_REFRACTORY_MS) {
+      skip_reason = "claro em refractory pós-publicação";
+    } else {
+      publish_idx  = CLASS_IDX_CLARO;
+      publish_prob = claro_prob;
+    }
   } else if (unknown_frame && unknown_streak >= UNKNOWN_STABILITY_FRAMES) {
     // Unknown: argmax + alta confiança + 2 frames consecutivos pra publicar.
     publish_idx  = CLASS_IDX_UNKNOWN;
@@ -587,6 +602,9 @@ void loop() {
                             result.timing.dsp,
                             result.timing.classification);
       last_publish_ms = now;
+      if (publish_idx == CLASS_IDX_CLARO) {
+        last_claro_publish_ms = now;
+      }
     } else {
       logTs();
       Serial.printf("[skip] cooldown ativo (%lu ms restantes)\n",
