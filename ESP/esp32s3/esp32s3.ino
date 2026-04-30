@@ -38,9 +38,9 @@
 // Config
 // ============================================================================
 
-// Wi-Fi (renomear iPhone pra sem espaços/apóstrofos evita problemas de encoding)
-static const char* WIFI_SSID     = "vinicio-phone";
-static const char* WIFI_PASSWORD = "vinicio00";
+// Wi-Fi
+static const char* WIFI_SSID     = "MVISIA_2.4GHz";
+static const char* WIFI_PASSWORD = "mvisia2020";
 
 // Endpoint do Sparked Sense (Supabase Edge Function direta, sem Bearer token)
 static const char* INGEST_URL    = "https://djzexivvddzzduetmkel.supabase.co/functions/v1/server/reading";
@@ -78,6 +78,16 @@ static const uint8_t DEVICE_PUBLIC_KEY[64] = {
 static const char* DEVICE_SOURCE =
   "spark:device:0422a8cf0ceca657332c314ff62df671d68de9b4a1cc2013d352383a9db1bd7dd75c5b2e9b8050aba8422fc9989e31bc436a7d7178d754597474aaca6d97756356";
 static const char* MODEL_ID      = "ei-claro-kws-v84";
+
+// ADR-011 temporary bypass.
+// snprintf("%.3f"/"%.6f") emite zeros à direita (e.g. "confidence":0.970), mas
+// o server canonicaliza com JSON.stringify (shortest round-trip → "0.97"). Os
+// dois SHA-256 divergem e a verificação retorna 401 bad_signature. Enquanto a
+// canonicalização não é portada pra ArduinoJson (igual ESP8266), enviamos
+// signature="unsigned_dev" — o handler em /server/reading aceita o marcador e
+// continua exigindo identidade via `source` → public_key. Voltar pra 0 depois
+// que o builder canonical estiver ok.
+#define UNSIGNED_DEV_BYPASS 1
 
 // Localização física do nó (hardcoded — ESP32-S3 não tem GPS).
 // Enviada como extensões CloudEvents top-level (`latitude`, `longitude`, `location`).
@@ -377,12 +387,16 @@ static void publishClassification(const char* label, float prob,
   }
 
   // Sign canonical bytes
+#if UNSIGNED_DEV_BYPASS
+  const char* sig_hex = "unsigned_dev";
+#else
   char sig_hex[129];
   if (!signCanonical((const uint8_t*)canonical, (size_t)n, sig_hex, sizeof(sig_hex))) {
     logTs();
     Serial.println("[publish] ERR: secp256k1 sign failed");
     return;
   }
+#endif
 
   // Build final body: canonical + ,"signature":"<hex>" appended just before the
   // closing }. Reuse the canonical buffer if it has room, otherwise a new buf.
