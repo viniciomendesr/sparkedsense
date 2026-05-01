@@ -28,6 +28,26 @@ Débito reconhecido que não justifica trabalho agora, mas vale registrar pra re
 
 A camada `kv` (em `supabase/functions/server/kv_store.ts`) sugere "key-value rápido", mas é só um wrapper de uma tabela Postgres com lookup `LIKE prefix%`. As funções `set/get/del/getByPrefix` mascaram isso e induzem padrões que seriam óbvios anti-patterns se a API fosse SQL nu (ex: scans completos em hot paths). Quando a migração de `sensor:` e `dataset:` pra tabelas próprias acontecer, o módulo `kv_store.ts` perde a maior parte do uso e pode virar `mock_readings_kv.ts` ou ser removido junto com o mock-mode.
 
+## Canonical envelope ESP32-S3 → ArduinoJson
+
+**Estado atual:** o firmware do Nó 2 (`ESP/esp32s3/esp32s3.ino`) constrói o canonical JSON pra assinar com `snprintf` + formatos `%.3f`/`%.6f`, que emitem zeros à direita (e.g. `"confidence":0.970`). O server canonicaliza com `JSON.stringify` (shortest round-trip → `"0.97"`), os hashes divergem e a verificação ECDSA falha. Detalhe técnico completo em [`bugs.md`](bugs.md#canonical-json-float-format-mismatch-entre-esp32-s3-e-server).
+
+**Workaround vigente:** `#define UNSIGNED_DEV_BYPASS 1` no firmware faz enviar `signature="unsigned_dev"`; o handler `/server/reading` aceita o marcador per ADR-011 e pula a verificação. Identidade do device continua enforced via `source` → `devices.public_key`. **O que se perde:** prova criptográfica de integridade do payload — qualquer um com a pubkey do Nó 2 conseguiria forjar uma reading aceita pelo server.
+
+**Por que adiar:** estamos em devnet/MVP, Nó 2 publica em ambiente controlado (espaço físico do operador), e migrar pra ArduinoJson exige reescrever o builder do canonical (descartar o `snprintf` grande em favor de `JsonDocument` + `serializeJson()`) + re-testar todo o pipeline de inferência → publicação. ROI baixo enquanto o sistema é demo/research.
+
+**Quando reconsiderar (gatilhos):**
+- Migração pra mainnet ou qualquer ambiente onde a integridade da reading vire load-bearing (datasets sendo monetizados, ou sendo usados por terceiros que precisam confiar sem confiar no operador).
+- Mais de um Nó 2 (ESP32-S3) em produção — não dá pra escalar bypass per-device.
+- Auditoria externa que pegue o `unsigned_dev` como red flag.
+
+**O que migrar quando o gatilho bater:**
+- Trocar `snprintf` do canonical em `publishClassification()` por `ArduinoJson::JsonDocument` + `serializeJson()` (mesmo padrão que o ESP8266 já usa em `ESP/esp8266/esp8266.ino`).
+- Mudar `UNSIGNED_DEV_BYPASS` pra `0` (ou remover o `#define` + `#if`/`#else`/`#endif`).
+- Remover o handler do marcador `unsigned_dev` em `supabase/functions/server/index.ts:2515-2523`.
+- Remover a entrada de `bugs.md` (ou movê-la pra status `resolvido`).
+- Atualizar ADR-011 marcando o bypass como retirado.
+
 ## Cleanup paralelo (não bloqueador)
 
 Pendências menores, sem impacto em escala:
